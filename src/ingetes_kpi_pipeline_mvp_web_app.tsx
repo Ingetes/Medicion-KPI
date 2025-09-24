@@ -193,17 +193,27 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
 
-  // puntuar filas como posibles cabeceras
+  // --- helpers ---
+  const n = (s: any) =>
+    String(s ?? "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "") // tildes
+      .replace(/[()↑%]/g, " ")         // símbolos del reporte
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
   const scoreHead = (row: any[]) => {
-    const H = row.map(norm);
+    const H = row.map(n);
     let sc = 0;
     if (H.some(h => h.includes("propietario") || h.includes("comercial") || h.includes("owner") || h.includes("vendedor"))) sc++;
     if (H.some(h => h.includes("fecha"))) sc++;
     if (H.some(h => h.includes("oportunidad") || h.includes("nombre"))) sc++;
-    if (H.some(h => h.includes("valor") || h.includes("monto") || h.includes("importe") || h.includes("precio"))) sc++;
+    if (H.some(h => h.includes("valor") || h.includes("monto") || h.includes("importe") || h.includes("precio") || h.includes("amount"))) sc++;
     return sc;
   };
 
+  // localizar fila de encabezados
   let headerRow = 0, best = -1;
   for (let r = 0; r < Math.min(40, A.length); r++) {
     const sc = scoreHead(A[r] || []);
@@ -212,55 +222,55 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
 
   const headers = A[headerRow] || [];
   const findIdx = (...cands: string[]) => {
-    const nc = cands.map(norm);
+    const nc = cands.map(n);
     for (let c = 0; c < headers.length; c++) {
-      const h = norm(headers[c]);
+      const h = n(headers[c]);
       if (nc.some(k => h.includes(k))) return c;
     }
     return -1;
   };
 
-  const idxCom = findIdx("propietario de oportunidad","comercial","propietario","owner","vendedor");
+  const idxCom = findIdx("propietario de oportunidad", "comercial", "propietario", "owner", "vendedor");
   const idxFec = findIdx(
-    "fecha de oferta","fecha oferta","fecha de envio","fecha envio","fecha propuesta",
-    "fecha de creacion","fecha creacion","fecha de creación","fecha creación",
-    "created","close date","fecha" // últimas, por si acaso
+    "fecha de oferta", "fecha oferta", "fecha de envio", "fecha envio", "fecha propuesta",
+    "fecha de creacion", "fecha creacion", "fecha de creación", "fecha creación",
+    "created", "close date", "fecha"
   );
-  const idxNom = findIdx("nombre de la oportunidad","oportunidad","nombre","asunto","subject");
-  const idxVal = findIdx("valor","monto","importe","amount","precio total","total");
+  const idxNom = findIdx("nombre de la oportunidad", "oportunidad", "nombre", "asunto", "subject");
+  const idxVal = findIdx("valor", "monto", "importe", "amount", "precio total", "total");
 
   if (idxCom < 0 || idxFec < 0) {
     throw new Error(`DETALLADO (Ofertas): faltan columnas mínimas (Comercial y Fecha) en hoja ${sheetName}`);
   }
 
   const rows: any[] = [];
-  let currentComercial = ""; // ⟵ arrastre del comercial (forward-fill)
+  let currentComercial = ""; // ← aquí se arrastra el comercial del bloque
 
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
     if (row.every((v: any) => String(v).trim() === "")) continue;
 
-    // detectar y saltar filas de Subtotal/Recuento típicas del reporte
-    const col2 = String(row[2] ?? "");
-    const col3 = String(row[idxNom] ?? "");
-    const isSubtotal = norm(col3).startsWith("subtotal") || norm(col2).includes("recuento") || norm(col2).includes("suma");
-    if (isSubtotal) continue;
+    // saltar filas de subtotal/total/recuento/suma propias del reporte
+    const line = n((row.join(" ")) || "");
+    if (
+      line.startsWith("subtotal") || line.startsWith("total") ||
+      line.includes("recuento") || line.includes("suma de")
+    ) continue;
 
-    // actualizar el comercial vigente solo cuando venga explícito y no sea "Subtotal/Total"
+    // si trae comercial explícito en esta fila, actualizar el "current"
     const rawCom = row[idxCom];
-    const maybeCom = mapComercial(rawCom);
-    if (maybeCom && !/^subtotal|total$/i.test(maybeCom)) {
-      currentComercial = maybeCom;
-    }
+    const mapped = mapComercial(rawCom); // usa tu normalizador existente
+    if (mapped) currentComercial = mapped;
 
-    const comercial = currentComercial || mapComercial(rawCom);
-    if (!comercial) continue; // si aún no tenemos comercial, no cuentes la fila
+    // usar el arrastrado; si aún no hay, no contamos la fila
+    const comercial = currentComercial;
+    if (!comercial) continue;
 
-    // fecha de oferta (usamos parse robusto)
+    // fecha robusta (dd/mm/yyyy, serial de Excel, ISO, etc.)
     const fecha = parseDateCell(row[idxFec]);
     if (!fecha) continue;
 
-    // periodo YYYY-MM (UTC para evitar deslizamiento de zona)
+    // periodo UTC (evita deslizar de mes por zona horaria)
     const d = new Date(fecha);
     const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 
@@ -271,7 +281,7 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   }
 
   if (!rows.length) throw new Error(`DETALLADO (Ofertas): sin filas válidas en ${sheetName}`);
-  const periods = Array.from(new Set(rows.map(r => r.ym))).sort(); // ⟵ SOLO por mes (nada de "ALL")
+  const periods = Array.from(new Set(rows.map(r => r.ym))).sort(); // solo meses (nada de "ALL")
   return { rows, sheetName, periods };
 }
 
