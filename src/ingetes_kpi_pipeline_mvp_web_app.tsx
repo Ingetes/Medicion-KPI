@@ -20,9 +20,6 @@ const toNumber = (v: any) => {
   return isFinite(n) ? n : 0;
 };
 
-const parseDateCell = (val: any) => {
-  if (val == null || val === "") return null;
-
 // Semáforo por cumplimiento vs meta (target)
 function offerStatus(count: number, target: number) {
   const ratio = target > 0 ? count / target : 0; // 1.0 = 100%
@@ -31,6 +28,8 @@ function offerStatus(count: number, target: number) {
   return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };                             // rojo (<70%)
 }
 
+const parseDateCell = (val: any) => {
+  if (val == null || val === "") return null;
   // Excel serial
   if (typeof val === "number") {
     const d: any = (XLSX as any).SSF.parse_date_code(val);
@@ -737,15 +736,28 @@ const resetAll = () => {
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Pipeline por comercial</div>
               <div className="space-y-2">
-                {data.porComercial.map((row: any) => {
-                  const pct = Math.round((row.pipeline / (max || 1)) * 100);
-                  return (
-                    <div key={row.comercial} className="text-sm">
-                      <div className="flex justify-between"><span className="font-medium">{row.comercial}</span><span>$ {fmtCOP(row.pipeline)}</span></div>
-                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
-                    </div>
-                  );
-                })}
+{data.porComercial.map((row: any, i: number) => {
+  const pctBar = Math.round((row.count / (max || 1)) * 100); // ancho relativo al top
+  const st = offerStatus(row.count, offersTarget);
+  const pctTarget = offersTarget > 0 ? Math.round((row.count / offersTarget) * 100) : 0;
+
+  return (
+    <div key={row.comercial} className="text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+          <span className="font-medium">{i + 1}. {row.comercial}</span>
+        </div>
+        <div className={`tabular-nums ${st.text}`}>
+          {row.count} / {offersTarget} ({pctTarget}%)
+        </div>
+      </div>
+      <div className="h-2 bg-gray-200 rounded mt-1">
+        <div className={`h-2 rounded ${st.bar}`} style={{ width: pctBar + "%" }} />
+      </div>
+    </div>
+  );
+})}
               </div>
             </section>
           )}
