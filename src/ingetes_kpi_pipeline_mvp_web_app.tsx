@@ -244,7 +244,7 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     if (!comercial || !fecha || isNaN(new Date(fecha).getTime())) continue;
 
     const d = new Date(fecha);
-    const ym = const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`; // YYYY-MM UTC
+    const ym = = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`; // YYYY-MM UTC
 
     rows.push({ comercial, fecha: d, ym, nombre, valor });
   }
