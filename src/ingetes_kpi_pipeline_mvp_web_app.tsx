@@ -119,7 +119,7 @@ const comercialMap: Record<string, string> = {
 
 const mapComercial = (raw: any) => {
   let s = String(raw ?? "").trim();
-  if (!s) return "(Sin comercial)";
+  if (!s) return ""; // ← vacío para que no mate el arrastre
 
   // Email → nombre
   if (s.includes("@")) s = s.split("@")[0].replace(/[._]/g, " ");
@@ -258,13 +258,19 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     ) continue;
 
     // si trae comercial explícito en esta fila, actualizar el "current"
-    const rawCom = row[idxCom];
-    const mapped = mapComercial(rawCom); // usa tu normalizador existente
-    if (mapped) currentComercial = mapped;
+// si la celda trae comercial explícito (texto NO vacío), actualiza el "current"
+const rawCom = row[idxCom];
+if (rawCom != null && String(rawCom).trim() !== "") {
+  const mapped = mapComercial(rawCom);
+  if (mapped && mapped !== "(Sin comercial)") {
+    currentComercial = mapped;
+  }
+}
 
-    // usar el arrastrado; si aún no hay, no contamos la fila
-    const comercial = currentComercial;
-    if (!comercial) continue;
+// usar el arrastrado; si aún no hay, no cuentes la fila (sigue siendo cabecera/total)
+const comercial = currentComercial;
+if (!comercial || comercial === "(Sin comercial)") continue;
+
 
     // fecha robusta (dd/mm/yyyy, serial de Excel, ISO, etc.)
     const fecha = parseDateCell(row[idxFec]);
