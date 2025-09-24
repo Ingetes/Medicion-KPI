@@ -172,8 +172,6 @@ async function readWorkbookRobust(file: File) {
   } catch {}
   throw new Error("No se pudo leer el archivo. Sube .xlsx/.xlsm/.xlsb/.xls o .csv válido.");
 }
-// Normalizador
-const norm = (s: any) => String(s || "").normalize("NFKD").toLowerCase().replace(/\s+/g, " ").trim();
 
 // Intenta encontrar cabeceras flexibles
 function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
