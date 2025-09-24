@@ -219,9 +219,9 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     return -1;
   };
 
-  const idxCom = findIdx("comercial","propietario","owner","vendedor");
-  const idxFec = findIdx("fecha","creacion","fecha de oferta","created","close date");
-  const idxNom = findIdx("oportunidad","nombre","asunto","subject");
+  const idxCom = findIdx("comercial","propietario","owner","vendedor","Propietario de oportunidad");
+  const idxFec = findIdx("fecha","creacion","fecha de oferta","created","close date","Fecha de creación","fecha de creacion");
+  const idxNom = findIdx("oportunidad","nombre","asunto","subject","Nombre de la oportunidad");
   const idxVal = findIdx("valor","monto","importe","amount","total");
 
   if (idxCom < 0 || idxFec < 0) {
@@ -632,6 +632,27 @@ const resetAll = () => {
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
   }
 }
+const offersKPI = useMemo(() => {
+  if (!offersModel) return { total: 0, porComercial: [], periods: [], period: "" };
+
+  const periods = offersModel.periods || [];
+  // si el seleccionado no existe, usa el último
+  const sel = periods.includes(offersPeriod) ? offersPeriod : (periods[periods.length - 1] || "");
+  const rows = offersModel.rows.filter((r:any) => r.ym === sel);
+
+  const by = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.comercial || "(Sin comercial)";
+    by.set(key, (by.get(key) || 0) + 1);
+  }
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a,b)=> b.count - a.count);
+
+  const total = porComercial.reduce((a,x)=>a+x.count, 0);
+  return { total, porComercial, periods, period: sel };
+}, [offersModel, offersPeriod]);
+
 const offersKPI = useMemo(() => {
   if (!offersModel) return { total: 0, porComercial: [] as any[], periods: [] as string[] };
   const period = offersPeriod || offersModel.periods?.[offersModel.periods.length-1] || "";
