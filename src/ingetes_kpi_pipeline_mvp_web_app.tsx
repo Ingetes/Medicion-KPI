@@ -1047,7 +1047,7 @@ const ScreenVisits = () => {
             <button
               className="px-3 py-2 rounded border"
               onClick={() => setRoute("KPI_VISITS")}
-              disabled={!visits}
+              disabled={!pivot}
             >
               Ir a Visitas
             </button>
@@ -1085,7 +1085,7 @@ const ScreenVisits = () => {
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_OFFERS")}
-              disabled={!offersModel}
+              disabled={!pivot}
             >
               Ver KPI
             </button>
@@ -1096,7 +1096,7 @@ const ScreenVisits = () => {
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_VISITS")}
-              disabled={!visits}
+              disabled={!pivot}
             >
               Ver KPI
             </button>
