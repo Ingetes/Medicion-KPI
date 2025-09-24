@@ -203,6 +203,68 @@ function findStageHeaderRow(A: any[][], headerRow: number, startCol: number) {
   for (let r = headerRow - 1; r >= Math.max(0, headerRow - 3); r--) if (looksStageRow(r)) return r;
   return headerRow;
 }
+function parseVisitsSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any;
+  if (!A.length) throw new Error("Visitas: hoja vacía");
+
+  const normH = (s: any) => norm(String(s).replace(/[()↑%]/g, " "));
+  const scoreRow = (row: any[]) => {
+    const set = row.map(normH);
+    let sc = 0;
+    if (set.some(h => h.includes("propietario") || h.includes("comercial") || h.includes("vendedor") || h.includes("owner"))) sc++;
+    if (set.some(h => h.includes("fecha"))) sc++;
+    if (set.some(h => h.includes("visita") || h.includes("cantidad") || h.includes("count"))) sc++;
+    return sc;
+  };
+
+  let headerRow = 0, best = -1;
+  for (let r = 0; r < Math.min(40, A.length); r++) {
+    const sc = scoreRow(A[r] || []);
+    if (sc > best) { best = sc; headerRow = r; }
+  }
+  const headers = A[headerRow] || [];
+  const findIdx = (...cands: string[]) => {
+    for (let c = 0; c < headers.length; c++) {
+      const h = normH(headers[c]);
+      if (cands.some(cd => h.includes(cd))) return c;
+    }
+    return -1;
+  };
+
+  const idxCom = findIdx("propietario", "comercial", "vendedor", "owner");
+  const idxFecha = findIdx("fecha", "creacion", "created");
+  const idxCnt = findIdx("visita", "cantidad", "count");
+
+  if (idxCom < 0) throw new Error("Visitas: no encontré columna de Comercial/Propietario.");
+
+  const rows: any[] = [];
+  for (let r = headerRow + 1; r < A.length; r++) {
+    const row = A[r] || [];
+    if (row.every((v: any) => String(v).trim() === "")) continue;
+
+    const comercial = mapComercial(row[idxCom]);
+    const fecha = idxFecha >= 0 ? parseDateCell(row[idxFecha]) : null;
+    let n = 1;
+    if (idxCnt >= 0) {
+      const vv = toNumber(row[idxCnt]);
+      n = vv > 0 ? vv : 0;
+    }
+    rows.push({ comercial, fecha, n });
+  }
+  return { rows, sheetName };
+}
+
+function tryParseAnyVisits(wb: XLSX.WorkBook) {
+  const errs: string[] = [];
+  for (const name of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[name];
+      if (!ws) continue;
+      return parseVisitsSheetRobust(ws, name);
+    } catch (e: any) { errs.push(`${name}: ${e?.message || e}`); }
+  }
+  throw new Error("Visitas: ninguna hoja válida. Detalles: " + errs.join(" | "));
+}
 function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any;
   if (!A.length) throw new Error("Resumen: hoja vacía");
@@ -311,6 +373,21 @@ function tryParseAnyDetail(wb: XLSX.WorkBook) {
 }
 
 // ====================== KPI Calcs =======================
+function calcOffersFromPivot(model: any) {
+  // Cuenta "Recuento de registros" en columnas cuya etapa contenga "proposal"
+  const porComercial = model.rows.map((r: any) => {
+    let offers = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const st = norm(stage);
+      if (st.includes("proposal")) {
+        offers += (agg as any).count || 0;
+      }
+    }
+    return { comercial: r.comercial, offers };
+  });
+  const total = porComercial.reduce((a: number, x: any) => a + x.offers, 0);
+  return { total, porComercial };
+}
 function calcPipelineFromPivot(model: any) {
   const porComercial = model.rows.map((r: any) => {
     let sum = 0; for (const [stage, agg] of Object.entries(r.values)) { const st = norm(stage); if (OPEN_STAGES.some(s => st.includes(s))) sum += (agg as any).sum; }
@@ -396,21 +473,38 @@ const RouteHome = ({ onEnter }: { onEnter: () => void }) => (
 );
 
 export default function IngetesKPIApp() {
-  const [route, setRoute] = useState<"HOME" | "MENU" | "KPI_PIPELINE" | "KPI_WINRATE" | "KPI_CYCLE" | "KPI_ATTAIN">("MENU");
+ const [route, setRoute] = useState<
+   "HOME" | "MENU" | "KPI_PIPELINE" | "KPI_WINRATE" | "KPI_CYCLE" | "KPI_ATTAIN" |
+   "KPI_OFFERS" | "KPI_VISITS"
+ >("MENU");
   const [demo, setDemo] = useState(true);
 
   const [filePivotName, setFilePivotName] = useState("");
   const [fileDetailName, setFileDetailName] = useState("");
+  const [fileVisitsName, setFileVisitsName] = useState("");
   const [pivot, setPivot] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
+  const [visits, setVisits] = useState<any>(null);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [winRateTarget, setWinRateTarget] = useState(30);
   const [cycleTarget, setCycleTarget] = useState(45);
 
-  const resetAll = () => { setFilePivotName(""); setFileDetailName(""); setPivot(null); setDetail(null); setSelectedComercial("ALL"); setError(""); setInfo(""); setWinRateTarget(30); setCycleTarget(45); };
-
+const resetAll = () => {
+  setFilePivotName("");
+  setFileDetailName("");
+  setFileVisitsName("");
+  setPivot(null);
+  setDetail(null);
+  setVisits(null);
+  setSelectedComercial("ALL");
+  setError("");
+  setInfo("");
+  setWinRateTarget(30);
+  setCycleTarget(45);
+};
+  
   const loadFixtures = () => {
     const wbPivot = wbFromAOA(FIXTURE_PIVOT_AOA, "Informe medicion KPI");
     const pv = tryParseAnyPivot(wbPivot); setPivot(pv); setFilePivotName("FIXTURE_PIVOT.xlsx");
@@ -434,12 +528,41 @@ export default function IngetesKPIApp() {
     try { const wb = await readWorkbookRobust(f); const model = tryParseAnyDetail(wb); setDetail(model); setInfo(prev => (prev + `Detalle OK • hoja: ${model.sheetName}`).trim()); }
     catch (e: any) { setDetail(null); let dbg = e?.debug ? "\n" + (e.debug).join("\n") : ""; setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}${dbg}`); }
   }
+  async function onVisitsFile(f: File) {
+  setError("");
+  setInfo(prev => prev ? prev + "\n" : "");
+  setFileVisitsName(f.name);
+  try {
+    const wb = await readWorkbookRobust(f);
+    const model = tryParseAnyVisits(wb);
+    setVisits(model);
+    setInfo(prev => (prev + `Visitas OK • hoja: ${model.sheetName}`).trim());
+  } catch (e: any) {
+    setVisits(null);
+    setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
+  }
+}
 
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
 
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
   const winRate = useMemo(() => pivot ? calcWinRateFromPivot(pivot) : { total: { comercial: "ALL", won: 0, lost: 0, total: 0, winRate: 0 }, porComercial: [] }, [pivot]);
   const salesCycle = useMemo(() => detail ? calcSalesCycleFromDetail(detail) : { totalAvgDays: 0, totalCount: 0, porComercial: [] }, [detail]);
+  const offers = useMemo(() => pivot ? calcOffersFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
+
+  const visitsKPI = useMemo(() => {
+    if (!visits) return { total: 0, porComercial: [] as any[] };
+    const by = new Map<string, number>();
+    for (const r of visits.rows) {
+      const key = r.comercial || "(Sin comercial)";
+      by.set(key, (by.get(key) || 0) + (Number(r.n) || 0));
+    }
+    const porComercial = Array.from(by.entries())
+      .map(([comercial, count]) => ({ comercial, count }))
+      .sort((a, b) => a.comercial.localeCompare(b.comercial));
+    const total = porComercial.reduce((a, x) => a + x.count, 0);
+    return { total, porComercial };
+  }, [visits]);
 
   const BackBar = ({ title }: { title: string }) => (
     <header className="px-4 py-3 bg-white border-b sticky top-0 z-10">
@@ -527,6 +650,86 @@ export default function IngetesKPIApp() {
       </div>
     );
   };
+
+  const ScreenOffers = () => {
+  const data = useMemo(() => offers, [offers]);
+  const selected = useMemo(() => {
+    if (!pivot) return 0;
+    if (selectedComercial === "ALL") return data.total;
+    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    return row ? row.offers : 0;
+  }, [pivot, data, selectedComercial]);
+  const max = useMemo(() => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.offers), 0) || 1, [data]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <BackBar title="KPI • Ofertas (conteo en Proposal)" />
+      <main className="max-w-6xl mx-auto p-4 space-y-6">
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
+          <div className="text-3xl font-bold mt-1">{selected} ofertas</div>
+          <div className="text-xs text-gray-500 mt-1">Fuente: RESUMEN (Recuento de registros en etapa Proposal)</div>
+        </section>
+        {pivot && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">Ofertas por comercial</div>
+            <div className="space-y-2">
+              {data.porComercial.map((row: any) => {
+                const pct = Math.round((row.offers / (max || 1)) * 100);
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex justify-between"><span className="font-medium">{row.comercial}</span><span>{row.offers}</span></div>
+                    <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+};
+
+const ScreenVisits = () => {
+  const data = useMemo(() => visitsKPI, [visitsKPI]);
+  const selected = useMemo(() => {
+    if (!visits) return 0;
+    if (selectedComercial === "ALL") return data.total;
+    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    return row ? row.count : 0;
+  }, [visits, data, selectedComercial]);
+  const max = useMemo(() => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0) || 1, [data]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <BackBar title="KPI • Visitas (conteo)" />
+      <main className="max-w-6xl mx-auto p-4 space-y-6">
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
+          <div className="text-3xl font-bold mt-1">{selected} visitas</div>
+          <div className="text-xs text-gray-500 mt-1">Fuente: archivo de Visitas (una fila = una visita, o columna “Visitas”).</div>
+        </section>
+        {visits && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">Visitas por comercial</div>
+            <div className="space-y-2">
+              {data.porComercial.map((row: any) => {
+                const pct = Math.round((row.count / (max || 1)) * 100);
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex justify-between"><span className="font-medium">{row.comercial}</span><span>{row.count}</span></div>
+                    <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+};
 
   const ScreenCycle = () => {
     const data = useMemo(() => salesCycle, [salesCycle]);
@@ -633,6 +836,8 @@ export default function IngetesKPIApp() {
   if (route === "KPI_WINRATE") return <ScreenWinRate />;
   if (route === "KPI_CYCLE") return <ScreenCycle />;
   if (route === "KPI_ATTAIN") return <ScreenAttainment />;
+  if (route === "KPI_OFFERS") return <ScreenOffers />;
+  if (route === "KPI_VISITS") return <ScreenVisits />;
 
   // ===== Menú ===== (route === "MENU")
   return (
@@ -690,7 +895,30 @@ export default function IngetesKPIApp() {
             <div className="text-xs text-gray-500 mt-1">{fileDetailName || "Sin archivo"}</div>
             <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_CYCLE") } disabled={!detail}>Ir a Sales Cycle</button></div>
           </div>
-        </section>
+         <div className="p-4 bg-white rounded-xl border">
+          <div className="font-semibold">Archivo VISITAS</div>
+          <div className="text-xs text-gray-500 mb-2">
+            Columnas sugeridas: <em>Comercial</em> / <em>Propietario</em>, <em>Fecha</em> (opcional), <em>Visitas</em> (opcional).
+            Si no hay columna de Visitas, cada fila cuenta como 1.
+          </div>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
+            onChange={(e) => e.target.files && onVisitsFile(e.target.files[0])}
+            className="block text-sm"
+          />
+          <div className="text-xs text-gray-500 mt-1">{fileVisitsName || "Sin archivo"}</div>
+          <div className="mt-3">
+            <button
+              className="px-3 py-2 rounded border"
+              onClick={() => setRoute("KPI_VISITS")}
+              disabled={!visits}
+            >
+              Ir a Visitas
+            </button>
+          </div>
+        </div>
+      </section>
 
         {/* Tarjetas de acceso a KPIs */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -713,6 +941,30 @@ export default function IngetesKPIApp() {
             <div className="font-semibold">🏁 Cumplimiento de Meta (Anual)</div>
             <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN + Metas mensuales × 12</p>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_ATTAIN")} disabled={!pivot}>Ver KPI</button>
+          </div>
+        </section>
+        <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="p-4 bg-white rounded-xl border flex flex-col">
+            <div className="font-semibold">🧾 Ofertas</div>
+            <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN (Proposal · Recuento)</p>
+            <button
+              className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
+              onClick={() => setRoute("KPI_OFFERS")}
+              disabled={!pivot}
+            >
+              Ver KPI
+            </button>
+          </div>
+          <div className="p-4 bg-white rounded-xl border flex flex-col">
+            <div className="font-semibold">📅 Visitas</div>
+            <p className="text-xs text-gray-500 mt-1">Fuente: archivo VISITAS</p>
+            <button
+              className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
+              onClick={() => setRoute("KPI_VISITS")}
+              disabled={!visits}
+            >
+              Ver KPI
+            </button>
           </div>
         </section>
 
