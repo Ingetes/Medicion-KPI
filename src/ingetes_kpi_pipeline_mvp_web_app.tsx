@@ -1,15 +1,6 @@
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
-/**
- * INGETES • KPI App v4.5.0 (Navegación por pantallas)
- *
- * - Cambia el comportamiento de “Ver KPI” para navegar a **otra pantalla**.
- * - El Menú ya no despliega KPIs debajo; ahora solo actúa como hub.
- * - Mantiene lectores robustos (RESUMEN/DETALLE), normalización de comerciales,
- *   KPIs (Pipeline, Win Rate, Sales Cycle) y modo Demo/Fixtures.
- */
-
 // ========================= Utils =========================
 const norm = (s: any) => String(s ?? "")
   .replace(/\u00A0/g, " ")
@@ -69,7 +60,7 @@ const FIXED_COMERCIALES = [
   "CLAUDIA RODRIGUEZ RODRIGUEZ",
   "HERNAN ROLDAN",
   "JHOAN ORTIZ",
-  "Juan Garzón Linares",
+  "JUAN GARZÓN LINARES",
   "KAREN CARRILLO",
   "LIZETH MARTINEZ",
   "PABLO RODRIGUEZ RODRIGUEZ",
@@ -181,7 +172,87 @@ async function readWorkbookRobust(file: File) {
   } catch {}
   throw new Error("No se pudo leer el archivo. Sube .xlsx/.xlsm/.xlsb/.xls o .csv válido.");
 }
+// Normalizador
+const norm = (s: any) => String(s || "").normalize("NFKD").toLowerCase().replace(/\s+/g, " ").trim();
 
+// Intenta encontrar cabeceras flexibles
+function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
+
+  // puntuar filas como posibles cabeceras
+  const scoreHead = (row: any[]) => {
+    const H = row.map(norm);
+    let sc = 0;
+    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor"))) sc++;
+    if (H.some(h => h.includes("fecha"))) sc++;
+    if (H.some(h => h.includes("oportunidad") || h.includes("nombre"))) sc++;
+    if (H.some(h => h.includes("valor") || h.includes("monto") || h.includes("importe"))) sc++;
+    return sc;
+  };
+
+  let headerRow = 0, best = -1;
+  for (let r = 0; r < Math.min(40, A.length); r++) {
+    const sc = scoreHead(A[r] || []);
+    if (sc > best) { best = sc; headerRow = r; }
+  }
+  const headers = A[headerRow] || [];
+  const findIdx = (...cands: string[]) => {
+    for (let c = 0; c < headers.length; c++) {
+      const h = norm(headers[c]);
+      if (cands.some(k => h.includes(k))) return c;
+    }
+    return -1;
+  };
+
+  const idxCom = findIdx("comercial","propietario","owner","vendedor");
+  const idxFec = findIdx("fecha","creacion","fecha de oferta","created","close date");
+  const idxNom = findIdx("oportunidad","nombre","asunto","subject");
+  const idxVal = findIdx("valor","monto","importe","amount","total");
+
+  if (idxCom < 0 || idxFec < 0) {
+    throw new Error(`DETALLADO (Ofertas): faltan columnas mínimas (Comercial y Fecha) en hoja ${sheetName}`);
+  }
+
+  const rows: any[] = [];
+  for (let r = headerRow + 1; r < A.length; r++) {
+    const row = A[r] || [];
+    if (!row.length || row.every((v:any)=>String(v).trim()==="")) continue;
+
+    const comercial = String(row[idxCom] ?? "").trim();
+    const fechaRaw = row[idxFec];
+    const fecha = parseDateCell(fechaRaw); // usa tu helper si ya existe; si no:
+    // const fecha = new Date(XLSX.SSF.parse_date_code(fechaRaw)?.toString() ?? fechaRaw);
+
+    const nombre = idxNom >= 0 ? String(row[idxNom] ?? "").trim() : "";
+    const valor = idxVal >= 0 ? Number(row[idxVal] ?? 0) : 0;
+
+    if (!comercial || !fecha || isNaN(new Date(fecha).getTime())) continue;
+
+    const d = new Date(fecha);
+    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; // YYYY-MM
+
+    rows.push({ comercial, fecha: d, ym, nombre, valor });
+  }
+
+  if (!rows.length) throw new Error(`DETALLADO (Ofertas): sin filas válidas en ${sheetName}`);
+  return { rows, sheetName };
+}
+
+function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
+  const errs: string[] = [];
+  for (const sn of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[sn];
+      if (!ws) continue;
+      const parsed = parseOffersFromDetailSheet(ws, sn);
+      // catálogo de periodos
+      const periods = Array.from(new Set(parsed.rows.map(r => r.ym))).sort();
+      return { ...parsed, periods };
+    } catch (e:any) { errs.push(`${sn}: ${e?.message || e}`); }
+  }
+  throw new Error("DETALLADO (Ofertas): no pude interpretar ninguna hoja. " + errs.join(" | "));
+}
 // ==================== Parser RESUMEN ====================
 function findHeaderPosition(A: any[][]) {
   for (let r = 0; r < A.length; r++) {
@@ -485,6 +556,9 @@ export default function IngetesKPIApp() {
   const [pivot, setPivot] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
   const [visits, setVisits] = useState<any>(null);
+  const [offersModel, setOffersModel] = useState<any>(null);
+  const [offersPeriod, setOffersPeriod] = useState<string>("");
+  const [offersTarget, setOffersTarget] = useState<number>(5);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -525,8 +599,10 @@ const resetAll = () => {
   }
   async function onDetailFile(f: File) {
     setError(""); setInfo(prev => prev ? prev + "\n" : ""); setFileDetailName(f.name);
-    try { const wb = await readWorkbookRobust(f); const model = tryParseAnyDetail(wb); setDetail(model); setInfo(prev => (prev + `Detalle OK • hoja: ${model.sheetName}`).trim()); }
-    catch (e: any) { setDetail(null); let dbg = e?.debug ? "\n" + (e.debug).join("\n") : ""; setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}${dbg}`); }
+    try { const wb = await readWorkbookRobust(f); const model = tryParseAnyDetail(wb); setDetail(model); const off = buildOffersModelFromDetail(wb); setOffersModel(off); 
+    if (off.periods?.length) setOffersPeriod(off.periods[off.periods.length - 1]);
+    setInfo(prev => (prev + `Detalle OK • hoja: ${model.sheetName}`).trim()); }
+    catch (e: any) { setDetail(null); let dbg = e?.debug ? "\n" + (e.debug).join("\n") : ""; setOffersModel(null); setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}${dbg}`); }
   }
   async function onVisitsFile(f: File) {
   setError("");
@@ -542,7 +618,24 @@ const resetAll = () => {
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
   }
 }
+const offersKPI = useMemo(() => {
+  if (!offersModel) return { total: 0, porComercial: [] as any[], periods: [] as string[] };
+  const period = offersPeriod || offersModel.periods?.[offersModel.periods.length-1] || "";
+  const rows = offersModel.rows.filter((r:any) => r.ym === period);
 
+  const by = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.comercial?.toString().trim() || "(Sin comercial)";
+    by.set(key, (by.get(key) || 0) + 1); // una fila = una oferta emitida
+  }
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a,b)=> b.count - a.count); // ranking desc
+
+  const total = porComercial.reduce((a,x)=>a+x.count, 0);
+  return { total, porComercial, periods: offersModel.periods, period };
+}, [offersModel, offersPeriod]);
+  
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
 
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
@@ -651,35 +744,79 @@ const resetAll = () => {
     );
   };
 
-  const ScreenOffers = () => {
-  const data = useMemo(() => offers, [offers]);
+const ScreenOffers = () => {
+  const data = offersKPI;
   const selected = useMemo(() => {
-    if (!pivot) return 0;
+    if (!offersModel) return 0;
     if (selectedComercial === "ALL") return data.total;
-    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
-    return row ? row.offers : 0;
-  }, [pivot, data, selectedComercial]);
-  const max = useMemo(() => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.offers), 0) || 1, [data]);
+    const row = data.porComercial.find((r:any)=>r.comercial===selectedComercial);
+    return row ? row.count : 0;
+  }, [offersModel, data, selectedComercial]);
+
+  const max = useMemo(() => data.porComercial.reduce((m:number,x:any)=>Math.max(m, x.count), 0) || 1, [data]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Ofertas (conteo en Proposal)" />
+      <BackBar title="KPI • Ofertas (desde DETALLADO)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         <section className="p-4 bg-white rounded-xl border">
-          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-          <div className="text-3xl font-bold mt-1">{selected} ofertas</div>
-          <div className="text-xs text-gray-500 mt-1">Fuente: RESUMEN (Recuento de registros en etapa Proposal)</div>
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+            <div className="text-sm text-gray-500">Periodo:
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={offersPeriod}
+                onChange={(e)=>setOffersPeriod(e.target.value)}
+              >
+                {(data.periods || []).map((p:string)=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="text-sm text-gray-500">Meta mensual:
+              <input
+                type="number"
+                className="ml-2 w-20 border rounded px-2 py-1 text-sm"
+                value={offersTarget}
+                onChange={(e)=>setOffersTarget(Math.max(0, Number(e.target.value||0)))}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Ofertas del período</div>
+              <div className="text-2xl font-bold">{data.total}</div>
+            </div>
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Del comercial seleccionado</div>
+              <div className="text-2xl font-bold">{selected}</div>
+            </div>
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Meta mínima</div>
+              <div className={`text-2xl font-bold ${selected >= offersTarget ? "text-green-600" : "text-red-600"}`}>
+                {offersTarget}
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: Archivo DETALLADO (una fila = una oferta). Requiere columnas: <em>Comercial</em> y <em>Fecha de oferta</em>.
+          </div>
         </section>
-        {pivot && (
+
+        {offersModel && (
           <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">Ofertas por comercial</div>
+            <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
-              {data.porComercial.map((row: any) => {
-                const pct = Math.round((row.offers / (max || 1)) * 100);
+              {data.porComercial.map((row:any, i:number) => {
+                const pct = Math.round((row.count / (max || 1)) * 100);
                 return (
                   <div key={row.comercial} className="text-sm">
-                    <div className="flex justify-between"><span className="font-medium">{row.comercial}</span><span>{row.offers}</span></div>
-                    <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">{i+1}. {row.comercial}</span>
+                      <span>{row.count}</span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded">
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                    </div>
                   </div>
                 );
               })}
@@ -950,7 +1087,7 @@ const ScreenVisits = () => {
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_OFFERS")}
-              disabled={!pivot}
+              disabled={!offersModel}
             >
               Ver KPI
             </button>
