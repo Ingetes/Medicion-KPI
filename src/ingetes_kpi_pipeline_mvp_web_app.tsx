@@ -632,44 +632,7 @@ const resetAll = () => {
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
   }
 }
-const offersKPI = useMemo(() => {
-  if (!offersModel) return { total: 0, porComercial: [], periods: [], period: "" };
 
-  const periods = offersModel.periods || [];
-  // si el seleccionado no existe, usa el último
-  const sel = periods.includes(offersPeriod) ? offersPeriod : (periods[periods.length - 1] || "");
-  const rows = offersModel.rows.filter((r:any) => r.ym === sel);
-
-  const by = new Map<string, number>();
-  for (const r of rows) {
-    const key = r.comercial || "(Sin comercial)";
-    by.set(key, (by.get(key) || 0) + 1);
-  }
-  const porComercial = Array.from(by.entries())
-    .map(([comercial, count]) => ({ comercial, count }))
-    .sort((a,b)=> b.count - a.count);
-
-  const total = porComercial.reduce((a,x)=>a+x.count, 0);
-  return { total, porComercial, periods, period: sel };
-}, [offersModel, offersPeriod]);
-
-const offersKPI = useMemo(() => {
-  if (!offersModel) return { total: 0, porComercial: [] as any[], periods: [] as string[] };
-  const period = offersPeriod || offersModel.periods?.[offersModel.periods.length-1] || "";
-  const rows = offersModel.rows.filter((r:any) => r.ym === period);
-
-  const by = new Map<string, number>();
-  for (const r of rows) {
-    const key = r.comercial || "(Sin comercial)";
-    by.set(key, (by.get(key) || 0) + 1); // una fila = una oferta emitida
-  }
-  const porComercial = Array.from(by.entries())
-    .map(([comercial, count]) => ({ comercial, count }))
-    .sort((a,b)=> b.count - a.count); // ranking desc
-
-  const total = porComercial.reduce((a,x)=>a+x.count, 0);
-  return { total, porComercial, periods: offersModel.periods, period };
-}, [offersModel, offersPeriod]);
   
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
 
@@ -950,6 +913,27 @@ const ScreenVisits = () => {
   };
 
   // ===== KPI: Cumplimiento de Meta (Anual) =====
+  const offersKPI = useMemo(() => {
+  if (!offersModel) return { total: 0, porComercial: [], periods: [], period: "" };
+
+  const periods = offersModel.periods || [];
+  // si el seleccionado no existe, usa el último
+  const sel = periods.includes(offersPeriod) ? offersPeriod : (periods[periods.length - 1] || "");
+  const rows = offersModel.rows.filter((r:any) => r.ym === sel);
+
+  const by = new Map<string, number>();
+  for (const r of rows) {
+    const key = r.comercial || "(Sin comercial)";
+    by.set(key, (by.get(key) || 0) + 1);
+  }
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a,b)=> b.count - a.count);
+
+  const total = porComercial.reduce((a,x)=>a+x.count, 0);
+  return { total, porComercial, periods, period: sel };
+}, [offersModel, offersPeriod]);
+
   const ScreenAttainment = () => {
     const data = useMemo(() => (pivot ? calcAttainmentFromPivot(pivot) : { total: { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 }, porComercial: [] }), [pivot]);
     const selected = useMemo(() => {
