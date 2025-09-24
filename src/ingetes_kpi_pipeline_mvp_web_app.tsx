@@ -22,13 +22,29 @@ const toNumber = (v: any) => {
 
 const parseDateCell = (val: any) => {
   if (val == null || val === "") return null;
+
+  // Excel serial
   if (typeof val === "number") {
     const d: any = (XLSX as any).SSF.parse_date_code(val);
     if (!d) return null;
+    // fecha UTC sin hora
     return new Date(Date.UTC(d.y, (d.m || 1) - 1, d.d || 1));
   }
-  const dt = new Date(val);
-  return isNaN(dt.getTime()) ? null : dt;
+
+  // Texto normalizado
+  const s = String(val).trim();
+
+  // dd/mm/yyyy o dd-mm-yyyy
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (m) {
+    const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3].length === 2 ? ("20"+m[3]) : m[3]);
+    const d = new Date(Date.UTC(yy, mm - 1, dd));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // yyyy-mm-dd (ISO) y similares
+  const d2 = new Date(s);
+  return isNaN(d2.getTime()) ? null : new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
 };
 
 const daysBetween = (d1: Date | null, d2: Date | null) => {
@@ -217,7 +233,7 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const row = A[r] || [];
     if (!row.length || row.every((v:any)=>String(v).trim()==="")) continue;
 
-    const comercial = String(row[idxCom] ?? "").trim();
+    const comercial = mapComercial(row[idxCom]); // usa tu normalizador
     const fechaRaw = row[idxFec];
     const fecha = parseDateCell(fechaRaw); // usa tu helper si ya existe; si no:
     // const fecha = new Date(XLSX.SSF.parse_date_code(fechaRaw)?.toString() ?? fechaRaw);
@@ -228,7 +244,7 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     if (!comercial || !fecha || isNaN(new Date(fecha).getTime())) continue;
 
     const d = new Date(fecha);
-    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; // YYYY-MM
+    const ym = const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`; // YYYY-MM UTC
 
     rows.push({ comercial, fecha: d, ym, nombre, valor });
   }
@@ -623,7 +639,7 @@ const offersKPI = useMemo(() => {
 
   const by = new Map<string, number>();
   for (const r of rows) {
-    const key = r.comercial?.toString().trim() || "(Sin comercial)";
+    const key = r.comercial || "(Sin comercial)";
     by.set(key, (by.get(key) || 0) + 1); // una fila = una oferta emitida
   }
   const porComercial = Array.from(by.entries())
@@ -1081,7 +1097,7 @@ const ScreenVisits = () => {
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">🧾 Ofertas</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN (Proposal · Recuento)</p>
+            <p className="text-xs text-gray-500 mt-1">Fuente: DETALLADO (fecha de oferta)</p>
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_OFFERS")}
