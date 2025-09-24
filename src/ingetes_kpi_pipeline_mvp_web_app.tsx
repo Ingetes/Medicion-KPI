@@ -189,16 +189,6 @@ async function readWorkbookRobust(file: File) {
   throw new Error("No se pudo leer el archivo. Sube .xlsx/.xlsm/.xlsb/.xls o .csv válido.");
 }
 
-// Normalizador de texto
-const norm = (s: any) =>
-  String(s ?? "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")   // quita tildes
-    .replace(/[()↑%]/g, " ")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
 function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
