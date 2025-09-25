@@ -422,6 +422,117 @@ function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
   throw new Error("DETALLADO (Ofertas): no pude interpretar ninguna hoja. " + errs.join(" | "));
 }
 // ==================== Parser RESUMEN ====================
+function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  if (!A.length) throw new Error("Resumen: hoja vacía");
+
+  // localiza fila/columna de “Propietario de oportunidad”
+  const { headerRow, propietarioCol } = findHeaderPosition(A);
+  const headers = A[headerRow] || [];
+
+  // lista de etapas por columnas (normalizadas)
+  const cols: { idx: number; label: string; key: string }[] = [];
+  for (let c = propietarioCol + 1; c < headers.length; c++) {
+    const label = String(headers[c] ?? "").trim();
+    if (!label) continue;
+    const key = norm(label);
+    cols.push({ idx: c, label, key });
+  }
+
+  // filas con datos
+  const rows: any[] = [];
+  for (let r = headerRow + 1; r < A.length; r++) {
+    const row = A[r] || [];
+    if (row.every((v:any)=> String(v).trim() === "")) continue;
+
+    const comercial = mapComercial(row[propietarioCol]);
+    if (!comercial || comercial === "(Sin comercial)") continue;
+
+    const amounts: Record<string, number> = {};
+    const counts:  Record<string, number> = {};
+    for (const col of cols) {
+      const v = row[col.idx];
+      const n = toNumber(v);
+      amounts[col.key] = (amounts[col.key] || 0) + n;
+      // “conteo” heurístico: 1 si hay número >0; 0 si vacío
+      counts[col.key]  = (counts[col.key]  || 0) + (n > 0 ? 1 : 0);
+    }
+    rows.push({ comercial, amounts, counts });
+  }
+
+  return { rows, cols, sheetName };
+}
+
+function tryParseAnyPivot(wb: XLSX.WorkBook) {
+  const errs: string[] = [];
+  for (const sn of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[sn];
+      if (!ws) continue;
+      return parsePivotSheet(ws, sn);
+    } catch (e:any) {
+      errs.push(`${sn}: ${e?.message || e}`);
+    }
+  }
+  throw new Error("Resumen: ninguna hoja válida. " + errs.join(" | "));
+}
+
+// Helpers de etapa
+const isOpenStage = (k: string) => {
+  const s = k;
+  return OPEN_STAGES.some(t => s.includes(t));
+};
+const isWonStage = (k: string) => /closed won|ganad/.test(k);
+const isLostStage = (k: string) => /closed lost|perdid/.test(k);
+
+// === KPIs desde RESUMEN ===
+function calcPipelineFromPivot(model: any) {
+  const by = new Map<string, number>();
+  model.rows.forEach((r:any) => {
+    let sum = 0;
+    for (const k in r.amounts) if (isOpenStage(k)) sum += r.amounts[k] || 0;
+    by.set(r.comercial, (by.get(r.comercial) || 0) + sum);
+  });
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, pipeline]) => ({ comercial, pipeline }))
+    .sort((a,b)=> b.pipeline - a.pipeline);
+  const total = porComercial.reduce((a,x)=>a+x.pipeline, 0);
+  return { total, porComercial };
+}
+
+function calcWinRateFromPivot(model: any) {
+  // winRate = won / (won + lost)  (por conteo)
+  const porComercial = model.rows.map((r:any) => {
+    let won = 0, lost = 0;
+    for (const k in r.counts) {
+      if (isWonStage(k))  won  += r.counts[k] || 0;
+      if (isLostStage(k)) lost += r.counts[k] || 0;
+    }
+    const total = won + lost;
+    const winRate = total > 0 ? (won * 100) / total : 0;
+    return { comercial: r.comercial, won, lost, total, winRate };
+  }).sort((a:any,b:any)=> b.winRate - a.winRate);
+
+  const agg = porComercial.reduce((acc:any,x:any)=> ({ won: acc.won+x.won, lost: acc.lost+x.lost }), { won:0, lost:0 });
+  const total = agg.won + agg.lost;
+  const totalWinRate = total>0 ? (agg.won*100)/total : 0;
+  return { total: { winRate: totalWinRate, won: agg.won, total }, porComercial };
+}
+
+function calcAttainmentFromPivot(model: any) {
+  // cumplimiento = (monto Closed Won) / metaAnual
+  const porComercial = model.rows.map((r:any) => {
+    let wonCOP = 0;
+    for (const k in r.amounts) if (isWonStage(k)) wonCOP += r.amounts[k] || 0;
+    const goal = metaAnual(r.comercial);
+    const pct  = goal > 0 ? (wonCOP * 100) / goal : 0;
+    return { comercial: r.comercial, wonCOP, goal, pct };
+  }).sort((a:any,b:any)=> b.pct - a.pct);
+
+  const agg = porComercial.reduce((acc:any,x:any)=> ({ wonCOP: acc.wonCOP+x.wonCOP, goal: acc.goal+x.goal }), { wonCOP:0, goal:0 });
+  const totalPct = agg.goal>0 ? (agg.wonCOP*100)/agg.goal : 0;
+  return { total: { pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
+}
 function findHeaderPosition(A: any[][]) {
   for (let r = 0; r < A.length; r++) {
     for (let c = 0; c < (A[r]?.length || 0); c++) {
@@ -596,9 +707,11 @@ export default function IngetesKPIApp() {
 
   const [fileDetailName, setFileDetailName] = useState("");
   const [fileVisitsName, setFileVisitsName] = useState("");
+  const [filePivotName, setFilePivotName] = useState("");
   const [detail, setDetail] = useState<any>(null);
   const [offersModel, setOffersModel] = useState<any>(null);
   const [visitsModel, setVisitsModel] = useState<any>(null);
+  const [pivot, setPivot] = useState<any>(null);
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
   const [visitsTarget, setVisitsTarget] = useState<number>(10)
@@ -662,9 +775,23 @@ async function onVisitsFile(f: File) {
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
   }
 }
-  
+async function onPivotFile(f: File) {
+  setError("");
+  setInfo(prev => prev ? prev + "\n" : "");
+  setFilePivotName(f.name);
+  try {
+    const wb = await readWorkbookRobust(f);
+    const pv = tryParseAnyPivot(wb);   // ⬅️ lo definimos en el paso 3
+    setPivot(pv);
+    setInfo(prev => (prev + `Resumen OK • hoja: ${pv.sheetName}`).trim());
+  } catch (e:any) {
+    setPivot(null);
+    setError(prev => (prev ? prev + "\n" : "") + `Resumen: ${e?.message || e}`);
+  }
+}
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
-
+  const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
+  const winRate  = useMemo(() => pivot ? calcWinRateFromPivot(pivot)   : { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] }, [pivot]);
   const salesCycle = useMemo(() => detail ? calcSalesCycleFromDetail(detail) : { totalAvgDays: 0, totalCount: 0, porComercial: [] }, [detail]);
   const visitsKPI = useMemo(() => {
   if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
@@ -1069,12 +1196,13 @@ const offersKPI = useMemo(() => {
 
 
     const ScreenAttainment = () => {
-    const selected = useMemo(() => {
-      if (!pivot) return { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 } as any;
-      if (selectedComercial === "ALL") return data.total;
-      const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
-      return row || { comercial: selectedComercial, wonCOP: 0, goal: metaAnual(selectedComercial), pct: 0 };
-    }, [pivot, data, selectedComercial]);
+    const data = useMemo(() => pivot ? calcAttainmentFromPivot(pivot) : { total: { pct: 0, wonCOP: 0, goal: 0 }, porComercial: [] }, [pivot]);      
+const selected = useMemo(() => {
+  if (!pivot) return { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 } as any;
+  if (selectedComercial === "ALL") return data.total;
+  const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+  return row || { comercial: selectedComercial, wonCOP: 0, goal: metaAnual(selectedComercial), pct: 0 };
+}, [pivot, data, selectedComercial]);
     const color = (p: number) => p >= 100 ? "bg-green-500" : (p >= 80 ? "bg-yellow-400" : "bg-red-500");
     const max = useMemo(() => Math.max(data.total.pct, ...(data.porComercial.map((r: any) => r.pct))), [data]);
 
@@ -1171,7 +1299,7 @@ const offersKPI = useMemo(() => {
             <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
             <div className="text-xs text-gray-500 mb-2">Filas por Comercial, columnas por Etapa, métricas: Suma de Precio total / Recuento de registros</div>
             <div className="text-xs text-gray-500 mt-1">{filePivotName || "Sin archivo"}</div>
-            <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_PIPELINE") } disabled={!offersModel}>Ir a Pipeline</button></div>
+            <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_PIPELINE") } disabled={!pivot}>Ir a Pipeline</button></div>
           </div>
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo DETALLADO</div>
@@ -1210,12 +1338,12 @@ const offersKPI = useMemo(() => {
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">📊 Pipeline (COP)</div>
             <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN</p>
-            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_PIPELINE")} disabled={!offersModel}>Ver KPI</button>
+            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_PIPELINE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">🎯 Tasa de Cierre (Win Rate)</div>
             <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN</p>
-            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_WINRATE")} disabled={!offersModel}>Ver KPI</button>
+            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_WINRATE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">⏱️ Sales Cycle (días)</div>
@@ -1225,7 +1353,7 @@ const offersKPI = useMemo(() => {
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">🏁 Cumplimiento de Meta (Anual)</div>
             <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN + Metas mensuales × 12</p>
-            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_ATTAIN")} disabled={!offersModel}>Ver KPI</button>
+            <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_ATTAIN")} disabled={!pivot}>Ver KPI</button>
           </div>
         </section>
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
