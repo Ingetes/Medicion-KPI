@@ -1182,8 +1182,7 @@ const offersKPI = useMemo(() => {
 }, [offersModel, offersPeriod]);
 
 
-  const ScreenAttainment = () => {
-    const data = useMemo(() => (pivot ? calcAttainmentFromPivot(pivot) : { total: { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 }, porComercial: [] }), [pivot]);
+    const ScreenAttainment = () => {
     const selected = useMemo(() => {
       if (!pivot) return { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 } as any;
       if (selectedComercial === "ALL") return data.total;
