@@ -1237,7 +1237,7 @@ const selected = useMemo(() => {
               <div className="mb-3 font-semibold">Cumplimiento por comercial</div>
               <div className="space-y-2">
                 {data.porComercial.map((row: any) => {
-                  const pctW = Math.round((row.pct / (max || 1)) * 100);
+                  const pctW = Math.min(100, Math.round(row.pct));
                   return (
                     <div key={row.comercial} className="text-sm">
                       <div className="flex justify-between items-center">
@@ -1247,7 +1247,7 @@ const selected = useMemo(() => {
                           <span>{Math.round(row.pct)}% — $ {fmtCOP(row.wonCOP)} / $ {fmtCOP(row.goal)}</span>
                         </span>
                       </div>
-                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pct, 100)}% }} /></div>
+                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pctW, 100)}% }} /></div>
                     </div>
                   );
                 })}
