@@ -419,6 +419,7 @@ function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
 function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A:any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("Resumen: hoja vacía");
+
   const { headerRow, propietarioCol } = findHeaderPosition(A);
   const headers = A[headerRow] || [];
 
@@ -431,21 +432,55 @@ function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
   }
 
   const rows:any[] = [];
+  let currentComercial = ""; // ← arrastre del comercial del bloque
+
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
     if (row.every((v:any)=> String(v).trim()==="")) continue;
-    const comercial = mapComercial(row[propietarioCol]);
-    if (!comercial || comercial === "(Sin comercial)") continue;
 
+    const line = norm((row.join(" ")) || "");
+
+    // Saltar subtotales/totales/recuentos típicos de tabla dinámica
+    if (line.startsWith("subtotal") || line.startsWith("total") ||
+        line.includes("recuento")   || line.includes("suma de")) {
+      continue;
+    }
+
+    // Si trae comercial explícito, actualiza el arrastre
+    const cellCom = row[propietarioCol];
+    if (cellCom != null && String(cellCom).trim() !== "") {
+      const mapped = mapComercial(cellCom);
+      if (mapped && mapped !== "(Sin comercial)") currentComercial = mapped;
+
+      // Si es una "fila título" (solo comercial y demás vacío) → no es dato
+      const soloComercial = row
+        .filter((v:any, c:number) => c !== propietarioCol)
+        .every((v:any) => String(v ?? "").trim() === "");
+      if (soloComercial) continue;
+    }
+
+    const comercial = currentComercial;
+    if (!comercial) continue;
+
+    // Acumular importes y recuentos por etapa
     const amounts:Record<string,number> = {};
     const counts: Record<string,number> = {};
     for (const col of cols) {
-      const n = Number(String(row[col.idx] ?? "0").replace(/[^\d.-]/g,"")) || 0;
-      amounts[col.key] = (amounts[col.key] || 0) + n;
-      counts[col.key]  = (counts[col.key]  || 0) + (n > 0 ? 1 : 0);
+      const raw = String(row[col.idx] ?? "0");
+      const n = Number(raw.replace(/[^\d.-]/g,"")) || 0;
+      if (n !== 0) {
+        amounts[col.key] = (amounts[col.key] || 0) + n;
+        counts[col.key]  = (counts[col.key]  || 0) + 1;
+      }
     }
+
+    // Si no hay nada en la fila, sáltala
+    const hasAny = Object.values(amounts).some(v=>v) || Object.values(counts).some(v=>v);
+    if (!hasAny) continue;
+
     rows.push({ comercial, amounts, counts });
   }
+
   return { rows, cols, sheetName };
 }
 
@@ -712,16 +747,25 @@ const resetAll = () => {
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
 
 async function onDetailFile(f: File) {
-  setError(""); setFileDetailName(f.name);
+  setError("");
+  setFileDetailName(f.name);
   try {
     const wb = await readWorkbookRobust(f);
-    setDetail(wb); // ⬅️ Sales Cycle usa el workbook/hoja DETALLADO
-    const off = buildOffersModelFromDetail(wb);
-    setOffersModel(off);
-    if (off.periods?.length) setOffersPeriod(off.periods[off.periods.length-1]);
-  } catch(e:any){
-    setDetail(null); setOffersModel(null);
-    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message||e}`);
+    const detailModel = tryParseAnyDetail(wb);
+    setDetail(detailModel);
+    try {
+      const off = buildOffersModelFromDetail(wb);
+      setOffersModel(off);
+      if (off.periods?.length) setOffersPeriod(off.periods.at(-1)!);
+    } catch (e:any) {
+      setOffersModel(null);
+      setOffersPeriod("");
+    }
+  } catch (e:any) {
+    setDetail(null);
+    setOffersModel(null);
+    setOffersPeriod("");
+    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}`);
   }
 }
 
@@ -760,7 +804,11 @@ async function onPivotFile(f: File) {
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
   const winRate  = useMemo(() => pivot ? calcWinRateFromPivot(pivot)   : { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] }, [pivot]);
-  const salesCycle = useMemo(() => detail ? calcSalesCycleFromDetail(detail) : { totalAvgDays: 0, totalCount: 0, porComercial: [] }, [detail]);
+  const salesCycle = useMemo(() => {
+    if (!detail) return { totalAvgDays: 0, totalCount: 0, porComercial: [] };
+    try { return calcSalesCycleFromDetail(detail); }
+    catch { return { totalAvgDays: 0, totalCount: 0, porComercial: [] }; }
+  }, [detail]);
   const visitsKPI = useMemo(() => {
   if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
   const periods = visitsModel.periods || [];
