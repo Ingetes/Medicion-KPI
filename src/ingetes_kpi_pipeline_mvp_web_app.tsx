@@ -3,12 +3,8 @@ import * as XLSX from "xlsx";
 
 // ========================= Utils =========================
 const norm = (s: any) => String(s ?? "")
-  .replace(/\u00A0/g, " ")
-  .toLowerCase()
-  .normalize("NFD")
-  .replace(/\p{Diacritic}/gu, "")
-  .replace(/\s+/g, " ")
-  .trim();
+  .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+  .toLowerCase().replace(/[()]/g," ").replace(/\s+/g," ").trim();
 
 const toNumber = (v: any) => {
   if (v == null || v === "") return 0;
@@ -62,8 +58,7 @@ const daysBetween = (d1: Date | null, d2: Date | null) => {
 };
 
 const fmtCOP = (n: number) => n.toLocaleString("es-CO");
-
-const OPEN_STAGES = ["qualification", "needs analysis", "needs", "proposal", "negotiation"];
+const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "open", "nuevo", "calificacion", "negociacion", "propuesta"];
 const WON_STAGES = ["closed won", "ganad"]; // detectar 'Closed Won' y variantes en español
 
 // Metas mensuales (COP) -> se convierten a meta anual multiplicando por 12
@@ -422,123 +417,106 @@ function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
 }
 // ==================== Parser RESUMEN ====================
 function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
-  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const A:any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("Resumen: hoja vacía");
-
-  // localiza fila/columna de “Propietario de oportunidad”
   const { headerRow, propietarioCol } = findHeaderPosition(A);
   const headers = A[headerRow] || [];
 
-  // lista de etapas por columnas (normalizadas)
-  const cols: { idx: number; label: string; key: string }[] = [];
+  // columnas de etapas
+  const cols: { idx:number; key:string; label:string }[] = [];
   for (let c = propietarioCol + 1; c < headers.length; c++) {
     const label = String(headers[c] ?? "").trim();
     if (!label) continue;
-    const key = norm(label);
-    cols.push({ idx: c, label, key });
+    cols.push({ idx: c, key: norm(label), label });
   }
 
-  // filas con datos
-  const rows: any[] = [];
+  const rows:any[] = [];
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
-    if (row.every((v:any)=> String(v).trim() === "")) continue;
-
+    if (row.every((v:any)=> String(v).trim()==="")) continue;
     const comercial = mapComercial(row[propietarioCol]);
     if (!comercial || comercial === "(Sin comercial)") continue;
 
-    const amounts: Record<string, number> = {};
-    const counts:  Record<string, number> = {};
+    const amounts:Record<string,number> = {};
+    const counts: Record<string,number> = {};
     for (const col of cols) {
-      const v = row[col.idx];
-      const n = toNumber(v);
+      const n = Number(String(row[col.idx] ?? "0").replace(/[^\d.-]/g,"")) || 0;
       amounts[col.key] = (amounts[col.key] || 0) + n;
-      // “conteo” heurístico: 1 si hay número >0; 0 si vacío
       counts[col.key]  = (counts[col.key]  || 0) + (n > 0 ? 1 : 0);
     }
     rows.push({ comercial, amounts, counts });
   }
-
   return { rows, cols, sheetName };
 }
 
 function tryParseAnyPivot(wb: XLSX.WorkBook) {
-  const errs: string[] = [];
+  const errs:string[] = [];
   for (const sn of wb.SheetNames) {
     try {
-      const ws = wb.Sheets[sn];
-      if (!ws) continue;
+      const ws = wb.Sheets[sn]; if (!ws) continue;
       return parsePivotSheet(ws, sn);
-    } catch (e:any) {
-      errs.push(`${sn}: ${e?.message || e}`);
-    }
+    } catch(e:any){ errs.push(`${sn}: ${e?.message||e}`); }
   }
   throw new Error("Resumen: ninguna hoja válida. " + errs.join(" | "));
 }
 
 // Helpers de etapa
-const isOpenStage = (k: string) => {
-  const s = k;
-  return OPEN_STAGES.some(t => s.includes(t));
-};
-const isWonStage = (k: string) => /closed won|ganad/.test(k);
-const isLostStage = (k: string) => /closed lost|perdid/.test(k);
+const isOpenStage = (k:string) => OPEN_STAGES.some(t => k.includes(t));
+const isWonStage  = (k:string) => /closed won|ganad/.test(k);
+const isLostStage = (k:string) => /closed lost|perdid/.test(k);
 
 // === KPIs desde RESUMEN ===
-function calcPipelineFromPivot(model: any) {
-  const by = new Map<string, number>();
-  model.rows.forEach((r:any) => {
-    let sum = 0;
-    for (const k in r.amounts) if (isOpenStage(k)) sum += r.amounts[k] || 0;
-    by.set(r.comercial, (by.get(r.comercial) || 0) + sum);
+function calcPipelineFromPivot(model:any){
+  const by = new Map<string,number>();
+  model.rows.forEach((r:any)=>{
+    let sum = 0; for (const k in r.amounts) if (isOpenStage(k)) sum += r.amounts[k] || 0;
+    by.set(r.comercial, (by.get(r.comercial)||0) + sum);
   });
   const porComercial = Array.from(by.entries())
     .map(([comercial, pipeline]) => ({ comercial, pipeline }))
     .sort((a,b)=> b.pipeline - a.pipeline);
-  const total = porComercial.reduce((a,x)=>a+x.pipeline, 0);
+  const total = porComercial.reduce((a,x)=>a+x.pipeline,0);
   return { total, porComercial };
 }
 
-function calcWinRateFromPivot(model: any) {
-  // winRate = won / (won + lost)  (por conteo)
-  const porComercial = model.rows.map((r:any) => {
-    let won = 0, lost = 0;
-    for (const k in r.counts) {
-      if (isWonStage(k))  won  += r.counts[k] || 0;
-      if (isLostStage(k)) lost += r.counts[k] || 0;
-    }
-    const total = won + lost;
-    const winRate = total > 0 ? (won * 100) / total : 0;
-    return { comercial: r.comercial, won, lost, total, winRate };
+function calcWinRateFromPivot(model:any){
+  const porComercial = model.rows.map((r:any)=>{
+    let won=0,lost=0; for (const k in r.counts){ if(isWonStage(k)) won+=r.counts[k]||0; if(isLostStage(k)) lost+=r.counts[k]||0; }
+    const total = won+lost; const winRate = total>0 ? (won*100)/total : 0;
+    return { comercial:r.comercial, won, lost, total, winRate };
   }).sort((a:any,b:any)=> b.winRate - a.winRate);
-
-  const agg = porComercial.reduce((acc:any,x:any)=> ({ won: acc.won+x.won, lost: acc.lost+x.lost }), { won:0, lost:0 });
-  const total = agg.won + agg.lost;
-  const totalWinRate = total>0 ? (agg.won*100)/total : 0;
+  const agg = porComercial.reduce((acc:any,x:any)=>({won:acc.won+x.won,lost:acc.lost+x.lost}),{won:0,lost:0});
+  const total = agg.won+agg.lost; const totalWinRate = total>0 ? (agg.won*100)/total : 0;
   return { total: { winRate: totalWinRate, won: agg.won, total }, porComercial };
 }
 
-function calcAttainmentFromPivot(model: any) {
-  // cumplimiento = (monto Closed Won) / metaAnual
-  const porComercial = model.rows.map((r:any) => {
-    let wonCOP = 0;
-    for (const k in r.amounts) if (isWonStage(k)) wonCOP += r.amounts[k] || 0;
+function calcAttainmentFromPivot(model:any){
+  const porComercial = model.rows.map((r:any)=>{
+    let wonCOP=0; for(const k in r.amounts) if(isWonStage(k)) wonCOP+=r.amounts[k]||0;
     const goal = metaAnual(r.comercial);
-    const pct  = goal > 0 ? (wonCOP * 100) / goal : 0;
-    return { comercial: r.comercial, wonCOP, goal, pct };
+    const pct  = goal>0 ? (wonCOP*100)/goal : 0;
+    return { comercial:r.comercial, wonCOP, goal, pct };
   }).sort((a:any,b:any)=> b.pct - a.pct);
-
-  const agg = porComercial.reduce((acc:any,x:any)=> ({ wonCOP: acc.wonCOP+x.wonCOP, goal: acc.goal+x.goal }), { wonCOP:0, goal:0 });
+  const agg = porComercial.reduce((acc:any,x:any)=>({wonCOP:acc.wonCOP+x.wonCOP,goal:acc.goal+x.goal}),{wonCOP:0,goal:0});
   const totalPct = agg.goal>0 ? (agg.wonCOP*100)/agg.goal : 0;
-  return { total: { pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
+  return { total:{ pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
 }
-function findHeaderPosition(A: any[][]) {
-  for (let r = 0; r < A.length; r++) {
-    for (let c = 0; c < (A[r]?.length || 0); c++) {
-      if (norm(A[r][c]).includes("propietario de oportunidad")) return { headerRow: r, propietarioCol: c };
-    }
+
+function findHeaderPosition(A:any[][]) {
+  let headerRow = 0, propietarioCol = 0, best = -1;
+  for (let r=0; r<Math.min(40, A.length); r++) {
+    const row = A[r] || [];
+    const score = row.reduce((acc:number, v:any, c:number) => {
+      const h = norm(v);
+      if (h.includes("propietario") || h.includes("owner") || h.includes("comercial") || h.includes("vendedor")) {
+        propietarioCol = c; acc += 2;
+      }
+      if (h.includes("etapa") || h.includes("stage")) acc += 1;
+      return acc;
+    }, 0);
+    if (score > best) { best = score; headerRow = r; }
   }
-  throw new Error("Resumen: No se encontró 'Propietario de oportunidad' en el encabezado.");
+  return { headerRow, propietarioCol };
 }
 
 function parseVisitsSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
@@ -722,39 +700,31 @@ export default function IngetesKPIApp() {
   const [cycleTarget, setCycleTarget] = useState(45);
 
 const resetAll = () => {
-  setFilePivotName("");  
-  setPivot(null); 
-
-  setFileDetailName("");
-  setFileVisitsName("");
-  setDetail(null);
+  setFilePivotName("");  setPivot(null);
+  setFileDetailName(""); setDetail(null); setOffersModel(null); setOffersPeriod("");
+  setFileVisitsName(""); setVisitsModel(null); setVisitsPeriod("");
   setSelectedComercial("ALL");
-  setError("");
-  setInfo("");
-  setWinRateTarget(30);
-  setCycleTarget(45);
-  setOffersModel(null);
-  setOffersPeriod("");
-  setVisitsModel(null);
-  setVisitsPeriod("");
+  setWinRateTarget(30); setCycleTarget(45); setVisitsTarget(10);
+  setError(""); setInfo("");
 };
 
   const colorForWinRate = (valuePct: number) => valuePct >= winRateTarget ? "bg-green-500" : (valuePct >= winRateTarget * 0.8 ? "bg-yellow-400" : "bg-red-500");
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
 
-  async function onDetailFile(f: File) {
-    setError(""); setInfo(prev => prev ? prev + "\n" : ""); setFileDetailName(f.name);
-    try { const wb = await readWorkbookRobust(f); const model = tryParseAnyDetail(wb); setDetail(model); 
+async function onDetailFile(f: File) {
+  setError(""); setFileDetailName(f.name);
+  try {
+    const wb = await readWorkbookRobust(f);
+    setDetail(wb); // ⬅️ Sales Cycle usa el workbook/hoja DETALLADO
     const off = buildOffersModelFromDetail(wb);
-      setOffersModel(off);
-      if (off.periods && off.periods.length) {
-        setOffersPeriod(off.periods[off.periods.length - 1]); // último mes disponible
-      }
-
-    
-    setInfo(prev => (prev + `Detalle OK • hoja: ${model.sheetName}`).trim()); }
-    catch (e: any) { setDetail(null); let dbg = e?.debug ? "\n" + (e.debug).join("\n") : ""; setOffersModel(null); setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}${dbg}`); }
+    setOffersModel(off);
+    if (off.periods?.length) setOffersPeriod(off.periods[off.periods.length-1]);
+  } catch(e:any){
+    setDetail(null); setOffersModel(null);
+    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message||e}`);
   }
+}
+
 async function onVisitsFile(f: File) {
   setError("");
   setInfo(prev => prev ? prev + "\n" : "");
@@ -774,12 +744,11 @@ async function onVisitsFile(f: File) {
   }
 }
 async function onPivotFile(f: File) {
-  setError("");
-  setInfo(prev => prev ? prev + "\n" : "");
+  setError(""); setInfo(prev => prev ? prev + "\n" : "");
   setFilePivotName(f.name);
   try {
     const wb = await readWorkbookRobust(f);
-    const pv = tryParseAnyPivot(wb);   // ⬅️ lo definimos en el paso 3
+    const pv = tryParseAnyPivot(wb);   // definido abajo
     setPivot(pv);
     setInfo(prev => (prev + `Resumen OK • hoja: ${pv.sheetName}`).trim());
   } catch (e:any) {
@@ -787,6 +756,7 @@ async function onPivotFile(f: File) {
     setError(prev => (prev ? prev + "\n" : "") + `Resumen: ${e?.message || e}`);
   }
 }
+
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
   const winRate  = useMemo(() => pivot ? calcWinRateFromPivot(pivot)   : { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] }, [pivot]);
@@ -1191,7 +1161,7 @@ const offersKPI = useMemo(() => {
 
 
     const ScreenAttainment = () => {
-    const data = useMemo(() => pivot ? calcAttainmentFromPivot(pivot) : { total: { pct: 0, wonCOP: 0, goal: 0 }, porComercial: [] }, [pivot]);      
+    const data = useMemo(() => pivot ? calcAttainmentFromPivot(pivot) : { total:{ pct:0, wonCOP:0, goal:0 }, porComercial:[] }, [pivot]);      
 const selected = useMemo(() => {
   if (!pivot) return { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 } as any;
   if (selectedComercial === "ALL") return data.total;
@@ -1289,7 +1259,7 @@ const selected = useMemo(() => {
         </section>
 
         {/* Cargar informes */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
             <div className="text-xs text-gray-500 mb-2">Filas por Comercial, columnas por Etapa, métricas: Suma de Precio total / Recuento de registros</div>
