@@ -865,7 +865,7 @@ const ScreenOffers = () => {
   const pctBar = Math.round((row.count / (max || 1)) * 100); // ancho relativo al top
   const st = offerStatus(row.count, offersTarget);
   const pctTarget = offersTarget > 0 ? ((row.count / offersTarget) * 100) : 0;
-  const pctLabel = `${pctTarget.toFixed(1)}%`; // 1 decimal, como en Win Rate
+  const pctLabel = `${Math.round(pctTarget)}%`; // sin decimales
 
   return (
     <div key={row.comercial} className="text-sm">
