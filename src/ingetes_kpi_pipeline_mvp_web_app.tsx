@@ -1304,14 +1304,12 @@ const selected = useMemo(() => {
               className="block text-sm"
             />
             <div className="text-xs text-gray-500 mt-1">{filePivotName || "Sin archivo"}</div>
-            <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_PIPELINE") } disabled={!pivot}>Ir a Pipeline</button></div>
           </div>
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo DETALLADO</div>
             <div className="text-xs text-gray-500 mb-2">Incluye: Propietario, Etapa, Antigüedad o Fechas, Importe, Probabilidad, Producto, Precio total, Cuenta</div>
             <input type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv" onChange={(e) => e.target.files && onDetailFile(e.target.files[0])} className="block text-sm" />
             <div className="text-xs text-gray-500 mt-1">{fileDetailName || "Sin archivo"}</div>
-            <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_CYCLE") } disabled={!detail}>Ir a Sales Cycle</button></div>
           </div>
          <div className="p-4 bg-white rounded-xl border">
           <div className="font-semibold">Archivo VISITAS</div>
@@ -1326,15 +1324,6 @@ const selected = useMemo(() => {
             className="block text-sm"
           />
           <div className="text-xs text-gray-500 mt-1">{fileVisitsName || "Sin archivo"}</div>
-          <div className="mt-3">
-            <button
-              className="px-3 py-2 rounded border"
-              onClick={() => setRoute("KPI_VISITS")}
-              disabled={!visitsModel}
-            >
-              Ir a Visitas
-            </button>
-          </div>
         </div>
       </section>
 
