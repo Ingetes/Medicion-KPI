@@ -682,24 +682,6 @@ function calcAttainmentFromPivot(model: any) {
   return { total: { comercial: "ALL", wonCOP: totalWon, goal: totalGoal, pct: totalPct }, porComercial };
 }
 
-// ================= Fixtures (Demo) =================
-const FIXTURE_PIVOT_AOA = [
-  ["", "Qualification", "Qualification", "Needs Analysis", "Needs Analysis", "Proposal", "Proposal", "Closed Won", "Closed Won", "Closed Lost", "Closed Lost"],
-  ["Propietario de oportunidad", "Suma de Precio total", "Recuento de registros", "Suma de Precio total", "Recuento de registros", "Suma de Precio total", "Recuento de registros", "Suma de Precio total", "Recuento de registros", "Suma de Precio total", "Recuento de registros"],
-  ["Juan Garzón Linares", 10000000, 2, 25000000, 1, 0, 0, 8000000, 3, 7000000, 2],
-  ["PABLO RODRIGUEZ RODRIGUEZ", 0, 0, 0, 0, 12000000, 1, 3000000, 1, 9000000, 4],
-  ["TOTAL", 10000000, 2, 25000000, 1, 12000000, 1, 11000000, 4, 16000000, 6],
-];
-const FIXTURE_DETAIL_ROWS = [
-  { "Propietario de oportunidad": "Juan Garzón Linares", "Etapa": "Closed Won", "Antigüedad": 25, "Importe": 12000000, "Probabilidad (%)": 100 },
-  { "Propietario de oportunidad": "Juan Garzón Linares", "Etapa": "Closed Lost", "Antigüedad": 40, "Importe": 8000000,  "Probabilidad (%)": 0 },
-  { "Propietario de oportunidad": "PABLO RODRIGUEZ RODRIGUEZ", "Etapa": "Closed Won", "Antigüedad": 30, "Importe": 6000000,  "Probabilidad (%)": 100 },
-  { "Propietario de oportunidad": "PABLO RODRIGUEZ RODRIGUEZ", "Etapa": "Closed Lost", "Antigüedad": 60, "Importe": 2000000,  "Probabilidad (%)": 0 },
-];
-
-function wbFromAOA(aoa: any[][], name = "Hoja1") { const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, name); return wb; }
-function wbFromJSON(json: any[], name = "Hoja1") { const ws = XLSX.utils.json_to_sheet(json); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, name); return wb; }
-
 // ================== UI (Router + Screens) ==================
 const RouteHome = ({ onEnter }: { onEnter: () => void }) => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -749,16 +731,6 @@ const resetAll = () => {
   setWinRateTarget(30);
   setCycleTarget(45);
 };
-  
-  const loadFixtures = () => {
-    const wbPivot = wbFromAOA(FIXTURE_PIVOT_AOA, "Informe medicion KPI");
-    const pv = tryParseAnyPivot(wbPivot); setPivot(pv); setFilePivotName("FIXTURE_PIVOT.xlsx");
-    const wbDetail = wbFromJSON(FIXTURE_DETAIL_ROWS, "Detalle");
-    const dt = tryParseAnyDetail(wbDetail); setDetail(dt); setFileDetailName("FIXTURE_DETAIL.xlsx");
-    setInfo("Fixtures cargados (Resumen + Detalle)"); setError("");
-  };
-
-  React.useEffect(() => { if (demo && (!pivot || !detail)) { try { loadFixtures(); } catch {} } }, [demo]);
 
   const colorForWinRate = (valuePct: number) => valuePct >= winRateTarget ? "bg-green-500" : (valuePct >= winRateTarget * 0.8 ? "bg-yellow-400" : "bg-red-500");
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
@@ -1286,7 +1258,6 @@ const offersKPI = useMemo(() => {
         {(error || info) && (
           <div className="space-y-2">
             {error && <div className="p-3 rounded border border-red-300 bg-red-50 text-sm text-red-700 whitespace-pre-wrap">{error}</div>}
-            {info && <div className="p-3 rounded border border-blue-300 bg-blue-50 text-xs text-blue-700 whitespace-pre-wrap">{info}</div>}
           </div>
         )}
 
