@@ -202,15 +202,15 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("VISITAS: hoja vacía");
 
-  const norm = (s:any) => String(s??"")
+  const norm = (s:any) => String(s ?? "")
     .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
-    .toLowerCase().replace(/\s+/g," ").trim();
+    .toLowerCase().replace(/[()↑%]/g," ").replace(/\s+/g," ").trim();
 
-  // Detectar fila de encabezados (por “comercial/propietario/owner” + “fecha”)
+  // Detectar fila de encabezados
   const scoreHead = (row:any[]) => {
     const H = row.map(norm);
     let sc = 0;
-    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor"))) sc++;
+    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor") || h.includes("ejecutivo"))) sc++;
     if (H.some(h => h.includes("fecha") || h.includes("date"))) sc++;
     return sc;
   };
@@ -223,7 +223,7 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const headers = A[headerRow] || [];
   const findIdx = (...cands:string[]) => {
     const NC = cands.map(norm);
-    for (let c=0;c<headers.length;c++) {
+    for (let c=0; c<headers.length; c++) {
       const h = norm(headers[c]);
       if (NC.some(k => h.includes(k))) return c;
     }
@@ -231,36 +231,66 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   };
 
   const idxCom = findIdx("comercial","propietario","owner","vendedor","ejecutivo");
-  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created");
+  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento");
   const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
-  const idxTipo= findIdx("tipo visita","tipo de visita","modalidad","presencial","virtual","canal");
+  const idxTip = findIdx("tipo visita","tipo de visita","modalidad","presencial","virtual","canal");
 
   if (idxCom < 0 || idxFec < 0) {
-    throw new Error(`VISITAS: faltan columnas mínimas (Comercial y Fecha) en hoja ${sheetName}`);
+    throw new Error(`VISITAS: faltan columnas (Comercial y Fecha) en hoja ${sheetName}`);
   }
 
   const rows:any[] = [];
-  for (let r = headerRow+1; r < A.length; r++) {
+  let currentComercial = "";   // ← arrastre del comercial
+
+  for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
     if (row.every((v:any)=>String(v).trim()==="")) continue;
 
-    const comercial = mapComercial(row[idxCom]);         // ya normaliza nombre
-    if (!comercial || comercial === "(Sin comercial)") continue;
+    // Saltar filas de agrupación: subtotal/total/recuento/suma, o encabezados repetidos
+    const line = norm((row.join(" ")) || "");
+    if (
+      line.startsWith("subtotal") || line.startsWith("total") ||
+      line.includes("recuento")   || line.includes("suma de") ||
+      scoreHead(row) >= 2 // parece cabecera repetida
+    ) continue;
 
-    const fecha = parseDateCell(row[idxFec]);            // robusto (dd/mm/yyyy, serial, ISO…)
+    // 1) ¿Fila "título" de bloque? (valor SOLO en la columna comercial y lo demás vacío)
+    const hasOnlyComercial =
+      String(row[idxCom] ?? "").trim() !== "" &&
+      row.filter((v:any, c:number) => c !== idxCom && String(v ?? "").trim() !== "").length === 0;
+
+    if (hasOnlyComercial) {
+      // actualizar comercial vigente y seguir (no es una visita)
+      const mapped = mapComercial(row[idxCom]);
+      if (mapped) currentComercial = mapped;
+      continue;
+    }
+
+    // 2) Fila de datos: si trae comercial explícito, actualiza; si viene vacío, arrastra
+    const rawCom = row[idxCom];
+    if (rawCom != null && String(rawCom).trim() !== "") {
+      const mapped = mapComercial(rawCom);
+      if (mapped) currentComercial = mapped;
+    }
+    const comercial = currentComercial;
+    if (!comercial) continue; // aún no hay comercial vigente → no contar
+
+    // Fecha robusta
+    const fecha = parseDateCell(row[idxFec]);
     if (!fecha) continue;
 
+    // Periodo YYYY-MM (UTC)
     const d = new Date(fecha);
     const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
 
-    const cliente = idxCli >= 0 ? String(row[idxCli]??"").trim() : "";
-    const tipo    = idxTipo>= 0 ? String(row[idxTipo]??"").trim() : "";
+    const cliente = idxCli >= 0 ? String(row[idxCli] ?? "").trim() : "";
+    const tipo    = idxTip >= 0 ? String(row[idxTip] ?? "").trim() : "";
 
     rows.push({ comercial, fecha: d, ym, cliente, tipo });
   }
 
   if (!rows.length) throw new Error(`VISITAS: sin filas válidas en ${sheetName}`);
-  const periods = Array.from(new Set(rows.map(r=>r.ym))).sort();
+  const periods = Array.from(new Set(rows.map(r=>r.ym))).sort(); // solo meses
   return { rows, sheetName, periods };
 }
 
