@@ -1277,8 +1277,6 @@ const offersKPI = useMemo(() => {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h2 className="text-xl md:text-2xl font-bold">Menú principal</h2>
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-1 rounded-full border ${demo ? 'bg-green-50 border-green-300 text-green-700' : 'bg-gray-50 border-gray-300 text-gray-600'}`}>Modo Demo: {demo ? 'ON' : 'OFF'}</span>
-            <button className="px-3 py-2 rounded border" onClick={() => { if (!demo) { setDemo(true); loadFixtures(); } else { setDemo(false); } }}>Toggle Demo</button>
             <button className="px-3 py-2 rounded border" onClick={resetAll}>Reiniciar</button>
           </div>
         </div>
@@ -1397,28 +1395,6 @@ const offersKPI = useMemo(() => {
               Ver KPI
             </button>
           </div>
-        </section>
-
-        {/* Fixtures / Self‑Test */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <button className="px-3 py-2 rounded border bg-white" onClick={loadFixtures}>Cargar Fixtures</button>
-          <button className="px-3 py-2 rounded border bg-white" onClick={() => {
-            try {
-              const wb1 = wbFromAOA(FIXTURE_PIVOT_AOA, "Informe medicion KPI");
-              const arr = XLSX.write(wb1, { type: "array", bookType: "xlsx" });
-              const wb2 = XLSX.read(new Uint8Array(arr), { type: "array", dense: true });
-              const pv = tryParseAnyPivot(wb2);
-              const p = calcPipelineFromPivot(pv);
-              const expected = 10000000 + 25000000 + 12000000; if (p.total !== expected) throw new Error("Pipeline no coincide");
-              const wr = calcWinRateFromPivot(pv);
-              if (Math.round(wr.total.winRate) !== Math.round((4 / (4 + 6)) * 100)) throw new Error("Win Rate no coincide");
-              const det = tryParseAnyDetail(wbFromJSON(FIXTURE_DETAIL_ROWS, "Detalle"));
-              const sc = calcSalesCycleFromDetail(det);
-              const expAvg = (25 + 40 + 30 + 60) / 4; if (Math.round(sc.totalAvgDays) !== Math.round(expAvg)) throw new Error("Sales Cycle no coincide");
-              setInfo("SELF‑TEST: OK"); setError(""); setPivot(pv); setDetail(det);
-            } catch (e: any) { setError("SELF‑TEST falló: " + (e?.message || e)); }
-          }}>Self‑Test</button>
-          <button className="px-3 py-2 rounded border bg-white" onClick={resetAll}>Reiniciar</button>
         </section>
       </main>
     </div>
