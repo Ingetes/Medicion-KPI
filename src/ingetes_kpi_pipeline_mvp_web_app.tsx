@@ -417,80 +417,56 @@ function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
 }
 // ==================== Parser RESUMEN ====================
 function parsePivotSheet(ws: XLSX.WorkSheet, sheetName: string) {
-  const A:any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any;
   if (!A.length) throw new Error("Resumen: hoja vacía");
 
   const { headerRow, propietarioCol } = findHeaderPosition(A);
-  const headers = A[headerRow] || [];
+  const stageRow = findStageHeaderRow(A, headerRow, propietarioCol + 1);
 
-  // columnas de etapas
-  const cols: { idx:number; key:string; label:string }[] = [];
-  for (let c = propietarioCol + 1; c < headers.length; c++) {
-    const label = String(headers[c] ?? "").trim();
-    if (!label) continue;
-    cols.push({ idx: c, key: norm(label), label });
+  const cols: any[] = [];
+  let lastStage = "";
+  const maxCols = Math.max(A[headerRow]?.length || 0, A[stageRow]?.length || 0);
+
+  for (let c = propietarioCol + 1; c < maxCols; c++) {
+    const stage = norm(A[stageRow]?.[c] ?? "") || lastStage; if (stage) lastStage = stage;
+    const metric = norm(A[headerRow]?.[c] ?? "");
+    if (!stage && !metric) continue;
+    cols.push({ col: c, stage, metric });
   }
 
-  const rows:any[] = [];
-  let currentComercial = ""; // ← arrastre del comercial del bloque
-
+  const rows: any[] = [];
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
-    if (row.every((v:any)=> String(v).trim()==="")) continue;
+    const labelRaw = row[propietarioCol];
+    const label = norm(labelRaw);
+    const isEmpty = row.map((x: any) => norm(x)).join("") === "";
+    if (isEmpty) continue;
+    if (!label) continue;
+    if (label.startsWith("total")) break;
 
-    const line = norm((row.join(" ")) || "");
+    // arrastre + normalización del comercial
+    const comercial = mapComercial(labelRaw);
 
-    // Saltar subtotales/totales/recuentos típicos de tabla dinámica
-    if (line.startsWith("subtotal") || line.startsWith("total") ||
-        line.includes("recuento")   || line.includes("suma de")) {
-      continue;
+    const values: Record<string, { sum: number; count: number }> = {};
+    for (const cm of cols) {
+      const st = cm.stage; if (!st) continue;
+      const met = cm.metric; const cell = row[cm.col];
+      if (!values[st]) values[st] = { sum: 0, count: 0 };
+      if (met.includes("suma") || met.includes("total")) values[st].sum += toNumber(cell);
+      else if (met.includes("recuento") || met.includes("count")) values[st].count += toNumber(cell);
     }
 
-    // Si trae comercial explícito, actualiza el arrastre
-    const cellCom = row[propietarioCol];
-    if (cellCom != null && String(cellCom).trim() !== "") {
-      const mapped = mapComercial(cellCom);
-      if (mapped && mapped !== "(Sin comercial)") currentComercial = mapped;
-
-      // Si es una "fila título" (solo comercial y demás vacío) → no es dato
-      const soloComercial = row
-        .filter((v:any, c:number) => c !== propietarioCol)
-        .every((v:any) => String(v ?? "").trim() === "");
-      if (soloComercial) continue;
-    }
-
-    const comercial = currentComercial;
-    if (!comercial) continue;
-
-    // Acumular importes y recuentos por etapa
-    const amounts:Record<string,number> = {};
-    const counts: Record<string,number> = {};
-    for (const col of cols) {
-      const raw = String(row[col.idx] ?? "0");
-      const n = Number(raw.replace(/[^\d.-]/g,"")) || 0;
-      if (n !== 0) {
-        amounts[col.key] = (amounts[col.key] || 0) + n;
-        counts[col.key]  = (counts[col.key]  || 0) + 1;
-      }
-    }
-
-    // Si no hay nada en la fila, sáltala
-    const hasAny = Object.values(amounts).some(v=>v) || Object.values(counts).some(v=>v);
-    if (!hasAny) continue;
-
-    rows.push({ comercial, amounts, counts });
+    const hasData = Object.values(values).some(v => v.sum || v.count);
+    if (hasData) rows.push({ comercial, values });
   }
-
-  return { rows, cols, sheetName };
+  return { rows, sheetName };
 }
 
 function tryParseAnyPivot(wb: XLSX.WorkBook) {
-  const errs:string[] = [];
-  for (const sn of wb.SheetNames) {
-    try {
-      const ws = wb.Sheets[sn]; if (!ws) continue;
-      return parsePivotSheet(ws, sn);
-    } catch(e:any){ errs.push(`${sn}: ${e?.message||e}`); }
+  const errs: string[] = [];
+  for (const name of wb.SheetNames) {
+    try { const ws = wb.Sheets[name]; if (!ws) continue; return parsePivotSheet(ws, name); }
+    catch (e: any) { errs.push(`${name}: ${e?.message || e}`); }
   }
   throw new Error("Resumen: ninguna hoja válida. " + errs.join(" | "));
 }
@@ -501,40 +477,51 @@ const isWonStage  = (k:string) => /closed won|ganad/.test(k);
 const isLostStage = (k:string) => /closed lost|perdid/.test(k);
 
 // === KPIs desde RESUMEN ===
-function calcPipelineFromPivot(model:any){
-  const by = new Map<string,number>();
-  model.rows.forEach((r:any)=>{
-    let sum = 0; for (const k in r.amounts) if (isOpenStage(k)) sum += r.amounts[k] || 0;
-    by.set(r.comercial, (by.get(r.comercial)||0) + sum);
+function calcPipelineFromPivot(model: any) {
+  const porComercial = model.rows.map((r: any) => {
+    let sum = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const st = norm(stage);
+      if (["qualification","needs","needs analysis","proposal","negotiation"].some(s => st.includes(s))) {
+        sum += (agg as any).sum || 0;
+      }
+    }
+    return { comercial: r.comercial, pipeline: sum };
   });
-  const porComercial = Array.from(by.entries())
-    .map(([comercial, pipeline]) => ({ comercial, pipeline }))
-    .sort((a,b)=> b.pipeline - a.pipeline);
-  const total = porComercial.reduce((a,x)=>a+x.pipeline,0);
+  const total = porComercial.reduce((a: number, x: any) => a + x.pipeline, 0);
   return { total, porComercial };
 }
 
-function calcWinRateFromPivot(model:any){
-  const porComercial = model.rows.map((r:any)=>{
-    let won=0,lost=0; for (const k in r.counts){ if(isWonStage(k)) won+=r.counts[k]||0; if(isLostStage(k)) lost+=r.counts[k]||0; }
-    const total = won+lost; const winRate = total>0 ? (won*100)/total : 0;
-    return { comercial:r.comercial, won, lost, total, winRate };
-  }).sort((a:any,b:any)=> b.winRate - a.winRate);
-  const agg = porComercial.reduce((acc:any,x:any)=>({won:acc.won+x.won,lost:acc.lost+x.lost}),{won:0,lost:0});
-  const total = agg.won+agg.lost; const totalWinRate = total>0 ? (agg.won*100)/total : 0;
-  return { total: { winRate: totalWinRate, won: agg.won, total }, porComercial };
+function calcWinRateFromPivot(model: any) {
+  const porComercial = model.rows.map((r: any) => {
+    let won = 0, lost = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const st = norm(stage);
+      if (st.includes("closed won") || st.includes("ganad")) won += (agg as any).count || 0;
+      else if (st.includes("closed lost") || st.includes("perdid")) lost += (agg as any).count || 0;
+    }
+    const total = won + lost; const winRate = total ? (won / total) * 100 : 0;
+    return { comercial: r.comercial, won, lost, total, winRate };
+  });
+  const tot = porComercial.reduce((a: any, c: any) => ({ won: a.won + c.won, lost: a.lost + c.lost, total: a.total + c.total }), { won: 0, lost: 0, total: 0 });
+  const totalWinRate = tot.total ? (tot.won / tot.total) * 100 : 0;
+  return { total: { winRate: totalWinRate, won: tot.won, total: tot.total }, porComercial };
 }
 
-function calcAttainmentFromPivot(model:any){
-  const porComercial = model.rows.map((r:any)=>{
-    let wonCOP=0; for(const k in r.amounts) if(isWonStage(k)) wonCOP+=r.amounts[k]||0;
+function calcAttainmentFromPivot(model: any) {
+  const porComercial = model.rows.map((r: any) => {
+    let wonCOP = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const st = norm(stage);
+      if (st.includes("closed won") || st.includes("ganad")) wonCOP += (agg as any).sum || 0;
+    }
     const goal = metaAnual(r.comercial);
-    const pct  = goal>0 ? (wonCOP*100)/goal : 0;
-    return { comercial:r.comercial, wonCOP, goal, pct };
-  }).sort((a:any,b:any)=> b.pct - a.pct);
-  const agg = porComercial.reduce((acc:any,x:any)=>({wonCOP:acc.wonCOP+x.wonCOP,goal:acc.goal+x.goal}),{wonCOP:0,goal:0});
-  const totalPct = agg.goal>0 ? (agg.wonCOP*100)/agg.goal : 0;
-  return { total:{ pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
+    const pct = goal > 0 ? (wonCOP * 100) / goal : 0;
+    return { comercial: r.comercial, wonCOP, goal, pct };
+  });
+  const agg = porComercial.reduce((acc: any, x: any) => ({ wonCOP: acc.wonCOP + x.wonCOP, goal: acc.goal + x.goal }), { wonCOP: 0, goal: 0 });
+  const totalPct = agg.goal > 0 ? (agg.wonCOP * 100) / agg.goal : 0;
+  return { total: { pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
 }
 
 function findHeaderPosition(A:any[][]) {
@@ -552,6 +539,19 @@ function findHeaderPosition(A:any[][]) {
     if (score > best) { best = score; headerRow = r; }
   }
   return { headerRow, propietarioCol };
+}
+
+function findStageHeaderRow(A: any[][], headerRow: number, startCol: number) {
+  const looksStageRow = (ri: number) => {
+    const row = A[ri] || []; let hits = 0;
+    for (let c = startCol; c < row.length; c++) {
+      const v = norm(row[c]); if (!v) continue;
+      if (["qualification","needs","needs analysis","proposal","negotiation","closed","ganad","perdid"].some(k => v.includes(k))) hits++;
+    }
+    return hits >= 2;
+  };
+  for (let r = headerRow - 1; r >= Math.max(0, headerRow - 3); r--) if (looksStageRow(r)) return r;
+  return headerRow;
 }
 
 function parseVisitsSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
