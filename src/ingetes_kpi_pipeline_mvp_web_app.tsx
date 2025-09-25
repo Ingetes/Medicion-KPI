@@ -865,7 +865,10 @@ const ScreenOffers = () => {
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
 {data.porComercial.map((row: any, i: number) => {
-  const pctBar = Math.round((row.count / (max || 1)) * 100); // ancho relativo al top
+const pctBar = offersTarget > 0
+  ? Math.min(100, Math.round((row.count / offersTarget) * 100))
+  : Math.round((row.count / (max || 1)) * 100);
+
   const st = offerStatus(row.count, offersTarget);
   const pctTarget = offersTarget > 0 ? ((row.count / offersTarget) * 100) : 0;
   const pctLabel = `${Math.round(pctTarget)}%`; // sin decimales
