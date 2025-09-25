@@ -867,7 +867,7 @@ async function onPivotFile(f: File) {
                       <span>$ {fmtCOP(row.pipeline)}</span>
                     </div>
                     <div className="h-2 bg-gray-200 rounded">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: pct >= 100 ? "green" : "#1f2937" }} />
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + % }} />
                     </div>
                   </div>
                 );
@@ -959,7 +959,6 @@ const ScreenOffers = () => {
               />
             </div>
           </div>
-
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-3 bg-gray-100 rounded">
               <div className="text-xs text-gray-500">Ofertas del período</div>
@@ -1248,7 +1247,7 @@ const selected = useMemo(() => {
                           <span>{Math.round(row.pct)}% — $ {fmtCOP(row.wonCOP)} / $ {fmtCOP(row.goal)}</span>
                         </span>
                       </div>
-                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pctW + "%" }} /></div>
+                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pct, 100)}% }} /></div>
                     </div>
                   );
                 })}
