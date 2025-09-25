@@ -698,19 +698,17 @@ export default function IngetesKPIApp() {
    "HOME" | "MENU" | "KPI_PIPELINE" | "KPI_WINRATE" | "KPI_CYCLE" | "KPI_ATTAIN" |
    "KPI_OFFERS" | "KPI_VISITS"
  >("MENU");
-  const [demo, setDemo] = useState(true);
 
   const [filePivotName, setFilePivotName] = useState("");
   const [fileDetailName, setFileDetailName] = useState("");
   const [fileVisitsName, setFileVisitsName] = useState("");
   const [pivot, setPivot] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
-  const [visits, setVisits] = useState<any>(null);
   const [offersModel, setOffersModel] = useState<any>(null);
   const [visitsModel, setVisitsModel] = useState<any>(null);
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
-const [visitsTarget, setVisitsTarget] = useState<number>(10)
+  const [visitsTarget, setVisitsTarget] = useState<number>(10)
   const [offersTarget, setOffersTarget] = useState<number>(5);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
@@ -724,12 +722,19 @@ const resetAll = () => {
   setFileVisitsName("");
   setPivot(null);
   setDetail(null);
-  setVisits(null);
   setSelectedComercial("ALL");
   setError("");
   setInfo("");
+  
+  // metas si quieres mantenerlas igual, déjalas como están
   setWinRateTarget(30);
   setCycleTarget(45);
+
+  // 🔽 limpia ofertas/visitas y sus periodos
+  setOffersModel(null);
+  setOffersPeriod("");
+  setVisitsModel(null);
+  setVisitsPeriod("");
 };
 
   const colorForWinRate = (valuePct: number) => valuePct >= winRateTarget ? "bg-green-500" : (valuePct >= winRateTarget * 0.8 ? "bg-yellow-400" : "bg-red-500");
@@ -774,12 +779,8 @@ async function onVisitsFile(f: File) {
   
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
 
-  const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
-  const winRate = useMemo(() => pivot ? calcWinRateFromPivot(pivot) : { total: { comercial: "ALL", won: 0, lost: 0, total: 0, winRate: 0 }, porComercial: [] }, [pivot]);
   const salesCycle = useMemo(() => detail ? calcSalesCycleFromDetail(detail) : { totalAvgDays: 0, totalCount: 0, porComercial: [] }, [detail]);
-  const offers = useMemo(() => pivot ? calcOffersFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
-
-const visitsKPI = useMemo(() => {
+  const visitsKPI = useMemo(() => {
   if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
   const periods = visitsModel.periods || [];
   const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length-1] || "");
@@ -1312,7 +1313,7 @@ const offersKPI = useMemo(() => {
             <button
               className="px-3 py-2 rounded border"
               onClick={() => setRoute("KPI_VISITS")}
-              disabled={!pivot}
+              disabled={!visitsModel}
             >
               Ir a Visitas
             </button>
@@ -1350,7 +1351,7 @@ const offersKPI = useMemo(() => {
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_OFFERS")}
-              disabled={!pivot}
+              disabled={!offersModelt}
             >
               Ver KPI
             </button>
@@ -1361,7 +1362,7 @@ const offersKPI = useMemo(() => {
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_VISITS")}
-              disabled={!pivot}
+              disabled={!visitsModel}
             >
               Ver KPI
             </button>
