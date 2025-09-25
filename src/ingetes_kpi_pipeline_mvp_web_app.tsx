@@ -21,11 +21,13 @@ const toNumber = (v: any) => {
 };
 
 // Semáforo por cumplimiento vs meta (target)
+// Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
-  const ratio = target > 0 ? count / target : 0; // 1.0 = 100%
-  if (ratio >= 1) return { ratio, bar: "bg-green-500", dot: "bg-green-500", text: "text-green-600" };     // verde
-  if (ratio >= 0.8) return { ratio, bar: "bg-yellow-400", dot: "bg-yellow-400", text: "text-yellow-600" }; // amarillo (70%-99%)
-  return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };                             // rojo (<70%)
+  // Si la meta es 0, considerar cumplido (verde) cuando haya ≥0 ofertas
+  const ratio = target > 0 ? (count / target) : (count > 0 ? 1 : 1);
+  if (ratio >= 1) return { ratio, bar: "bg-green-500", dot: "bg-green-500", text: "text-green-600" };
+  if (ratio >= 0.8) return { ratio, bar: "bg-yellow-400", dot: "bg-yellow-400", text: "text-yellow-600" };
+  return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };
 }
 
 const parseDateCell = (val: any) => {
@@ -865,12 +867,14 @@ const ScreenOffers = () => {
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
 {data.porComercial.map((row: any, i: number) => {
-const pctBar = offersTarget > 0
-  ? Math.min(100, Math.round((row.count / offersTarget) * 100))
-  : Math.round((row.count / (max || 1)) * 100);
+const pct = offersTarget > 0
+  ? Math.round((selected / offersTarget) * 100)
+  : (selected > 0 ? 100 : 100); // (o 0 si quieres que 0/0 sea 0%)
 
   const st = offerStatus(row.count, offersTarget);
-  const pctTarget = offersTarget > 0 ? ((row.count / offersTarget) * 100) : 0;
+const pctTarget = offersTarget > 0
+  ? Math.round((row.count / offersTarget) * 100)
+  : (row.count > 0 ? 100 : 100);
   const pctLabel = `${Math.round(pctTarget)}%`; // sin decimales
 
   return (
