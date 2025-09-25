@@ -861,28 +861,38 @@ const ScreenOffers = () => {
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
-{data.porComercial.map((row:any, i:number) => {
+{data.porComercial.map((row: any, i: number) => {
   const pctBar = Math.round((row.count / (max || 1)) * 100); // ancho relativo al top
   const st = offerStatus(row.count, offersTarget);
-  const pctTarget = offersTarget > 0 ? Math.round((row.count / offersTarget) * 100) : 0;
+  const pctTarget = offersTarget > 0 ? ((row.count / offersTarget) * 100) : 0;
+  const pctLabel = `${pctTarget.toFixed(1)}%`; // 1 decimal, como en Win Rate
 
   return (
     <div key={row.comercial} className="text-sm">
       <div className="flex items-center justify-between gap-2">
+        {/* IZQUIERDA: orden + nombre (sin color) */}
+        <div className="font-medium">{i + 1}. {row.comercial}</div>
+
+        {/* DERECHA: números en negro + punto de color */}
         <div className="flex items-center gap-2">
+          <span className="tabular-nums text-gray-900">
+            {pctLabel} ({row.count}/{offersTarget})
+          </span>
           <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
-          <span className="font-medium">{i + 1}. {row.comercial}</span>
-        </div>
-        <div className={`tabular-nums ${st.text}`}>
-          {row.count} / {offersTarget} ({pctTarget}%)
         </div>
       </div>
+
+      {/* Barra gris (como el resto de la app) */}
       <div className="h-2 bg-gray-200 rounded mt-1">
-        <div className={`h-2 rounded ${st.bar}`} style={{ width: pctBar + "%" }} />
+        <div
+          className="h-2 rounded bg-gray-700"
+          style={{ width: pctBar + "%" }}
+        />
       </div>
     </div>
   );
 })}
+
             </div>
           </section>
         )}
