@@ -198,6 +198,83 @@ async function readWorkbookRobust(file: File) {
   throw new Error("No se pudo leer el archivo. Sube .xlsx/.xlsm/.xlsb/.xls o .csv válido.");
 }
 
+function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  if (!A.length) throw new Error("VISITAS: hoja vacía");
+
+  const norm = (s:any) => String(s??"")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/\s+/g," ").trim();
+
+  // Detectar fila de encabezados (por “comercial/propietario/owner” + “fecha”)
+  const scoreHead = (row:any[]) => {
+    const H = row.map(norm);
+    let sc = 0;
+    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor"))) sc++;
+    if (H.some(h => h.includes("fecha") || h.includes("date"))) sc++;
+    return sc;
+  };
+  let headerRow = 0, best = -1;
+  for (let r = 0; r < Math.min(40, A.length); r++) {
+    const sc = scoreHead(A[r]||[]);
+    if (sc > best) { best = sc; headerRow = r; }
+  }
+
+  const headers = A[headerRow] || [];
+  const findIdx = (...cands:string[]) => {
+    const NC = cands.map(norm);
+    for (let c=0;c<headers.length;c++) {
+      const h = norm(headers[c]);
+      if (NC.some(k => h.includes(k))) return c;
+    }
+    return -1;
+  };
+
+  const idxCom = findIdx("comercial","propietario","owner","vendedor","ejecutivo");
+  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created");
+  const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
+  const idxTipo= findIdx("tipo visita","tipo de visita","modalidad","presencial","virtual","canal");
+
+  if (idxCom < 0 || idxFec < 0) {
+    throw new Error(`VISITAS: faltan columnas mínimas (Comercial y Fecha) en hoja ${sheetName}`);
+  }
+
+  const rows:any[] = [];
+  for (let r = headerRow+1; r < A.length; r++) {
+    const row = A[r] || [];
+    if (row.every((v:any)=>String(v).trim()==="")) continue;
+
+    const comercial = mapComercial(row[idxCom]);         // ya normaliza nombre
+    if (!comercial || comercial === "(Sin comercial)") continue;
+
+    const fecha = parseDateCell(row[idxFec]);            // robusto (dd/mm/yyyy, serial, ISO…)
+    if (!fecha) continue;
+
+    const d = new Date(fecha);
+    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+
+    const cliente = idxCli >= 0 ? String(row[idxCli]??"").trim() : "";
+    const tipo    = idxTipo>= 0 ? String(row[idxTipo]??"").trim() : "";
+
+    rows.push({ comercial, fecha: d, ym, cliente, tipo });
+  }
+
+  if (!rows.length) throw new Error(`VISITAS: sin filas válidas en ${sheetName}`);
+  const periods = Array.from(new Set(rows.map(r=>r.ym))).sort();
+  return { rows, sheetName, periods };
+}
+
+function buildVisitsModelFromWorkbook(wb: XLSX.WorkBook) {
+  const errs:string[] = [];
+  for (const sn of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[sn];
+      if (!ws) continue;
+      return parseVisitsFromSheet(ws, sn);
+    } catch(e:any) { errs.push(`${sn}: ${e?.message || e}`); }
+  }
+  throw new Error("VISITAS: no pude interpretar ninguna hoja. "+errs.join(" | "));
+}
 function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
@@ -618,7 +695,10 @@ export default function IngetesKPIApp() {
   const [detail, setDetail] = useState<any>(null);
   const [visits, setVisits] = useState<any>(null);
   const [offersModel, setOffersModel] = useState<any>(null);
+  const [visitsModel, setVisitsModel] = useState<any>(null);
   const [offersPeriod, setOffersPeriod] = useState<string>("");
+  const [visitsPeriod, setVisitsPeriod] = useState<string>("");
+const [visitsTarget, setVisitsTarget] = useState<number>(10)
   const [offersTarget, setOffersTarget] = useState<number>(5);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
@@ -671,21 +751,24 @@ const resetAll = () => {
     setInfo(prev => (prev + `Detalle OK • hoja: ${model.sheetName}`).trim()); }
     catch (e: any) { setDetail(null); let dbg = e?.debug ? "\n" + (e.debug).join("\n") : ""; setOffersModel(null); setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}${dbg}`); }
   }
-  async function onVisitsFile(f: File) {
+async function onVisitsFile(f: File) {
   setError("");
   setInfo(prev => prev ? prev + "\n" : "");
   setFileVisitsName(f.name);
+
   try {
     const wb = await readWorkbookRobust(f);
-    const model = tryParseAnyVisits(wb);
-    setVisits(model);
-    setInfo(prev => (prev + `Visitas OK • hoja: ${model.sheetName}`).trim());
-  } catch (e: any) {
-    setVisits(null);
+    const vm = buildVisitsModelFromWorkbook(wb);
+    setVisitsModel(vm);
+    if (vm.periods && vm.periods.length) {
+      setVisitsPeriod(vm.periods[vm.periods.length - 1]); // último mes
+    }
+    setInfo(prev => (prev + `Visitas OK • hoja: ${vm.sheetName}`).trim());
+  } catch (e:any) {
+    setVisitsModel(null);
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
   }
 }
-
   
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
 
@@ -694,19 +777,24 @@ const resetAll = () => {
   const salesCycle = useMemo(() => detail ? calcSalesCycleFromDetail(detail) : { totalAvgDays: 0, totalCount: 0, porComercial: [] }, [detail]);
   const offers = useMemo(() => pivot ? calcOffersFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
 
-  const visitsKPI = useMemo(() => {
-    if (!visits) return { total: 0, porComercial: [] as any[] };
-    const by = new Map<string, number>();
-    for (const r of visits.rows) {
-      const key = r.comercial || "(Sin comercial)";
-      by.set(key, (by.get(key) || 0) + (Number(r.n) || 0));
-    }
-    const porComercial = Array.from(by.entries())
-      .map(([comercial, count]) => ({ comercial, count }))
-      .sort((a, b) => a.comercial.localeCompare(b.comercial));
-    const total = porComercial.reduce((a, x) => a + x.count, 0);
-    return { total, porComercial };
-  }, [visits]);
+const visitsKPI = useMemo(() => {
+  if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
+  const periods = visitsModel.periods || [];
+  const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length-1] || "");
+  const rows = visitsModel.rows.filter((r:any)=> r.ym === sel);
+
+  const by = new Map<string, number>();
+  for (const r of rows) {
+    by.set(r.comercial, (by.get(r.comercial) || 0) + 1); // una fila = una visita
+  }
+
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a,b)=> b.count - a.count);
+
+  const total = porComercial.reduce((a,x)=>a+x.count, 0);
+  return { total, porComercial, periods, period: sel };
+}, [visitsModel, visitsPeriod]);
 
   const BackBar = ({ title }: { title: string }) => (
     <header className="px-4 py-3 bg-white border-b sticky top-0 z-10">
@@ -911,54 +999,111 @@ const ScreenOffers = () => {
 };
 
 const ScreenVisits = () => {
-  const data = useMemo(() => visitsKPI, [visitsKPI]);
-  const selected = useMemo(() => {
-    if (!visits) return 0;
+  const data = visitsKPI;
+
+  const selectedCount = useMemo(() => {
+    if (!visitsModel) return 0;
     if (selectedComercial === "ALL") return data.total;
-    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    const row = data.porComercial.find((r:any)=> r.comercial === selectedComercial);
     return row ? row.count : 0;
-  }, [visits, data, selectedComercial]);
-  const max = useMemo(() => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0) || 1, [data]);
+  }, [visitsModel, data, selectedComercial]);
+
+  const max = useMemo(() => data.porComercial.reduce((m:number,x:any)=>Math.max(m, x.count), 0) || 1, [data]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Visitas (conteo)" />
+      <BackBar title="KPI • Visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-          <div className="text-3xl font-bold mt-1">{selected} visitas</div>
-          <div className="text-xs text-gray-500 mt-1">Fuente: archivo de Visitas (una fila = una visita, o columna “Visitas”).</div>
-        </section>
-        {visits && (
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">Visitas por comercial</div>
-            <div className="space-y-2">
-{data.porComercial.map((row: any, i: number) => {
-  const pctBar = Math.round((row.count / (max || 1)) * 100); // ancho relativo al top
-  const st = offerStatus(row.count, offersTarget);
-  const pctTarget = offersTarget > 0 ? Math.round((row.count / offersTarget) * 100) : 0;
 
-  return (
-    <div key={row.comercial} className="text-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
-          <span className="font-medium">{i + 1}. {row.comercial}</span>
-        </div>
-        <div className={`tabular-nums ${st.text}`}>
-          {/* "hechas / meta (porcentaje)" */}
-          {row.count} / {offersTarget} ({pctTarget}%)
-        </div>
-      </div>
-      <div className="h-2 bg-gray-200 rounded mt-1">
-        <div
-          className={`h-2 rounded ${st.bar}`}
-          style={{ width: pctBar + "%" }}
-        />
-      </div>
-    </div>
-  );
-})}
+        {/* Cabecera */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+            <div className="text-sm text-gray-500">Periodo:
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={visitsPeriod}
+                onChange={(e)=>setVisitsPeriod(e.target.value)}
+              >
+                {(data.periods || []).map((p:string)=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="text-sm text-gray-500">Meta mensual:
+              <input
+                type="number"
+                className="ml-2 w-20 border rounded px-2 py-1 text-sm"
+                value={visitsTarget}
+                onChange={(e)=>setVisitsTarget(Math.max(0, Number(e.target.value||0)))}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Visitas del período</div>
+              <div className="text-2xl font-bold">{data.total}</div>
+            </div>
+
+            {/* Comercial seleccionado (número negro + puntico de color) */}
+            {(() => {
+              const st = offerStatus(selectedCount, visitsTarget);
+              const pct = visitsTarget > 0 ? Math.round((selectedCount / visitsTarget) * 100) : (selectedCount > 0 ? 100 : 100);
+              return (
+                <div className="p-3 bg-gray-100 rounded">
+                  <div className="text-xs text-gray-500 mb-1">Del comercial seleccionado</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold tabular-nums text-gray-900">
+                      {pct}% ({selectedCount}/{visitsTarget})
+                    </span>
+                    <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Meta mínima</div>
+              <div className="text-2xl font-bold">{visitsTarget}</div>
+            </div>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: Archivo VISITAS (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de la visita</em>.
+          </div>
+        </section>
+
+        {/* Ranking */}
+        {visitsModel && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">Ranking de visitas por comercial ({data.period})</div>
+
+            <div className="space-y-2">
+              {data.porComercial.map((row:any, i:number) => {
+                // barra vs meta: si meta=0 y hay visitas -> 100%; si 0/0 -> 100% (puedes cambiar a 0 si prefieres)
+                const pctBar = visitsTarget > 0
+                  ? Math.min(100, Math.round((row.count / visitsTarget) * 100))
+                  : (row.count > 0 ? 100 : 100);
+
+                const st = offerStatus(row.count, visitsTarget);
+                const pct = visitsTarget > 0
+                  ? Math.round((row.count / visitsTarget) * 100)
+                  : (row.count > 0 ? 100 : 100);
+
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium">{i + 1}. {row.comercial}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="tabular-nums text-gray-900">{pct}% ({row.count}/{visitsTarget})</span>
+                        <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded mt-1">
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
