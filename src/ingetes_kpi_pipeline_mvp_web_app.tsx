@@ -772,7 +772,10 @@ const resetAll = () => {
         <main className="max-w-6xl mx-auto p-4 space-y-6">
           <section className="p-4 bg-white rounded-xl border">
             <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-            <div className="mt-2 flex items-end gap-3"><div className={`w-3 h-3 rounded-full ${color(selected)}`}></div><div className="text-3xl font-bold">{selected.toFixed(1)}%</div></div>
+            <div className="mt-2 flex items-end gap-3">
+              <div className={`w-3 h-3 rounded-full ${color(selected)}`}></div>
+              <div className="text-3xl font-bold">{Math.round(selected)}%</div>
+            </div>
             <div className="text-xs text-gray-500 mt-1">Meta: {winRateTarget}% — Verde ≥ meta · Amarillo ≥ 80% · Rojo &lt; 80%</div>
           </section>
           {pivot && (
@@ -785,7 +788,7 @@ const resetAll = () => {
                     <div key={row.comercial} className="text-sm">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{row.comercial}</span>
-                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.winRate)}`}></span><span>{row.winRate.toFixed(1)}% ({row.won}/{row.total})</span></span>
+                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.winRate)}`}></span><span>{Math.round(row.winRate)}% ({row.won}/{row.total})</span></span>
                       </div>
                       <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
                     </div>
@@ -1044,7 +1047,7 @@ const offersKPI = useMemo(() => {
             <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
             <div className="mt-2 flex items-end gap-3">
               <div className={`w-3 h-3 rounded-full ${color(selected.pct)}`}></div>
-              <div className="text-3xl font-bold">{selected.pct.toFixed(1)}%</div>
+              <div className="text-3xl font-bold">{Math.round(selected.pct)}%</div>
             </div>
             <div className="text-xs text-gray-500 mt-1">Meta anual = meta mensual × 12</div>
             <div className="text-xs text-gray-500">Cerrado (Closed Won): $ {fmtCOP(selected.wonCOP)} / Meta: $ {fmtCOP(selected.goal)}</div>
@@ -1062,7 +1065,7 @@ const offersKPI = useMemo(() => {
                         <span className="font-medium">{row.comercial}</span>
                         <span className="flex items-center gap-2">
                           <span className={`inline-block w-2 h-2 rounded-full ${color(row.pct)}`}></span>
-                          <span>{row.pct.toFixed(1)}% — $ {fmtCOP(row.wonCOP)} / $ {fmtCOP(row.goal)}</span>
+                          <span>{Math.round(row.pct)}% — $ {fmtCOP(row.wonCOP)} / $ {fmtCOP(row.goal)}</span>
                         </span>
                       </div>
                       <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pctW + "%" }} /></div>
