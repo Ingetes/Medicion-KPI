@@ -1247,7 +1247,7 @@ const selected = useMemo(() => {
                           <span>{Math.round(row.pct)}% — $ {fmtCOP(row.wonCOP)} / $ {fmtCOP(row.goal)}</span>
                         </span>
                       </div>
-                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pctW, 100)}% }} /></div>
+                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: `${Math.min(pctW, 100)}% `}} /></div>
                     </div>
                   );
                 })}
