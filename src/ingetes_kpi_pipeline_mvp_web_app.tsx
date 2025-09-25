@@ -723,18 +723,17 @@ export default function IngetesKPIApp() {
   const [cycleTarget, setCycleTarget] = useState(45);
 
 const resetAll = () => {
+  setFilePivotName("");   // ⬅️ limpia el nombre del RESUMEN
+  setPivot(null);         // ⬅️ limpia el modelo RESUMEN
+
   setFileDetailName("");
   setFileVisitsName("");
   setDetail(null);
   setSelectedComercial("ALL");
   setError("");
   setInfo("");
-  
-  // metas si quieres mantenerlas igual, déjalas como están
   setWinRateTarget(30);
   setCycleTarget(45);
-
-  // 🔽 limpia ofertas/visitas y sus periodos
   setOffersModel(null);
   setOffersPeriod("");
   setVisitsModel(null);
@@ -1298,6 +1297,12 @@ const selected = useMemo(() => {
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
             <div className="text-xs text-gray-500 mb-2">Filas por Comercial, columnas por Etapa, métricas: Suma de Precio total / Recuento de registros</div>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
+              onChange={(e) => e.target.files && onPivotFile(e.target.files[0])}
+              className="block text-sm"
+            />
             <div className="text-xs text-gray-500 mt-1">{filePivotName || "Sin archivo"}</div>
             <div className="mt-3"><button className="px-3 py-2 rounded border" onClick={() => setRoute("KPI_PIPELINE") } disabled={!pivot}>Ir a Pipeline</button></div>
           </div>
