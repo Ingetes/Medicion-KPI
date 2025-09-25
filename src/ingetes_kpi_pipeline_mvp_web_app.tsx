@@ -867,23 +867,26 @@ const ScreenOffers = () => {
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
 {data.porComercial.map((row: any, i: number) => {
-const pct = offersTarget > 0
-  ? Math.round((selected / offersTarget) * 100)
-  : (selected > 0 ? 100 : 100); // (o 0 si quieres que 0/0 sea 0%)
+  // Barra según meta mínima (si supera la meta, 100%).
+  // Si la meta es 0: si hay ofertas -> 100%; si 0/0 y quieres 0% cámbialo por 0.
+  const pctBar = offersTarget > 0
+    ? Math.min(100, Math.round((row.count / offersTarget) * 100))
+    : (row.count > 0 ? 100 : 100);
 
+  // Semáforo del puntico y etiqueta % vs meta (sin decimales)
   const st = offerStatus(row.count, offersTarget);
-const pctTarget = offersTarget > 0
-  ? Math.round((row.count / offersTarget) * 100)
-  : (row.count > 0 ? 100 : 100);
-  const pctLabel = `${Math.round(pctTarget)}%`; // sin decimales
+  const pctTarget = offersTarget > 0
+    ? Math.round((row.count / offersTarget) * 100)
+    : (row.count > 0 ? 100 : 100);
+  const pctLabel = `${pctTarget}%`;
 
   return (
     <div key={row.comercial} className="text-sm">
       <div className="flex items-center justify-between gap-2">
-        {/* IZQUIERDA: orden + nombre (sin color) */}
+        {/* IZQUIERDA: orden + nombre */}
         <div className="font-medium">{i + 1}. {row.comercial}</div>
 
-        {/* DERECHA: números en negro + punto de color */}
+        {/* DERECHA: números en negro + puntico de color */}
         <div className="flex items-center gap-2">
           <span className="tabular-nums text-gray-900">
             {pctLabel} ({row.count}/{offersTarget})
@@ -892,17 +895,13 @@ const pctTarget = offersTarget > 0
         </div>
       </div>
 
-      {/* Barra gris (como el resto de la app) */}
+      {/* Barra gris (ancho = pctBar) */}
       <div className="h-2 bg-gray-200 rounded mt-1">
-        <div
-          className="h-2 rounded bg-gray-700"
-          style={{ width: pctBar + "%" }}
-        />
+        <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
       </div>
     </div>
   );
 })}
-
             </div>
           </section>
         )}
