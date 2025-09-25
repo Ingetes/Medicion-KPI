@@ -867,7 +867,7 @@ async function onPivotFile(f: File) {
                       <span>$ {fmtCOP(row.pipeline)}</span>
                     </div>
                     <div className="h-2 bg-gray-200 rounded">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + % }} />
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
                     </div>
                   </div>
                 );
