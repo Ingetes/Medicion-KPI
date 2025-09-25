@@ -107,11 +107,11 @@ const comercialMap: Record<string, string> = {
   "jhoan sebastian ortiz": "JHOAN ORTIZ",
 
   // Juan
-  "juan garzon": "Juan Garzón Linares",
-  "juan garzon linares": "Juan Garzón Linares",
-  "juan garzón linares": "Juan Garzón Linares",
-  "juan sebastian garzon": "Juan Garzón Linares",
-  "juan sebastian garzon linares": "Juan Garzón Linares",
+  "juan garzon": "JUAN GARZÓN LINARES",
+  "juan garzon linares": "JUAN GARZÓN LINARES",
+  "juan garzón linares": "JUAN GARZÓN LINARES",
+  "juan sebastian garzon": "JUAN GARZÓN LINARES",
+  "juan sebastian garzon linares": "JUAN GARZÓN LINARES",
 
   // Karen
   "karen carrillo": "KAREN CARRILLO",
