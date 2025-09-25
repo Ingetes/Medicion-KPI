@@ -20,7 +20,6 @@ const toNumber = (v: any) => {
   return isFinite(n) ? n : 0;
 };
 
-// Semáforo por cumplimiento vs meta (target)
 // Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
   // Si la meta es 0, considerar cumplido (verde) cuando haya ≥0 ofertas
@@ -723,8 +722,8 @@ export default function IngetesKPIApp() {
   const [cycleTarget, setCycleTarget] = useState(45);
 
 const resetAll = () => {
-  setFilePivotName("");   // ⬅️ limpia el nombre del RESUMEN
-  setPivot(null);         // ⬅️ limpia el modelo RESUMEN
+  setFilePivotName("");  
+  setPivot(null); 
 
   setFileDetailName("");
   setFileVisitsName("");
@@ -841,21 +840,20 @@ async function onPivotFile(f: File) {
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Pipeline por comercial</div>
               <div className="space-y-2">
-{data.porComercial.map((row: any) => {
-  const pct = Math.round((row.pipeline / (max || 1)) * 100);
-  return (
-    <div key={row.comercial} className="text-sm">
-      <div className="flex justify-between items-center">
-        <span className="font-medium">{row.comercial}</span>
-        <span>$ {fmtCOP(row.pipeline)}</span>
-      </div>
-      <div className="h-2 bg-gray-200 rounded">
-        <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-      </div>
-    </div>
-  );
-})}
-
+              {data.porComercial.map((row: any) => {
+                const pct = Math.round((row.pipeline / (max || 1)) * 100);
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{row.comercial}</span>
+                      <span>$ {fmtCOP(row.pipeline)}</span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded">
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                    </div>
+                  </div>
+                );
+              })}
               </div>
             </section>
           )}
@@ -970,8 +968,6 @@ const ScreenOffers = () => {
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
 {data.porComercial.map((row: any, i: number) => {
-  // Barra según meta mínima (si supera la meta, 100%).
-  // Si la meta es 0: si hay ofertas -> 100%; si 0/0 y quieres 0% cámbialo por 0.
   const pctBar = offersTarget > 0
     ? Math.min(100, Math.round((row.count / offersTarget) * 100))
     : (row.count > 0 ? 100 : 100);
@@ -1293,7 +1289,7 @@ const selected = useMemo(() => {
         </section>
 
         {/* Cargar informes */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
             <div className="text-xs text-gray-500 mb-2">Filas por Comercial, columnas por Etapa, métricas: Suma de Precio total / Recuento de registros</div>
