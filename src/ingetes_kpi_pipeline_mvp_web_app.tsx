@@ -841,8 +841,8 @@ async function onDetailFile(f: File) {
   try {
     const wb = await readWorkbookRobust(f);
 
-    const detailModel = tryParseAnyDetail(wb);   // ⬅️ modelo con rows
-    setDetail(detailModel);
+    const detailModel = tryParseAnyDetail(wb);
+    setDetail({ debug: [], ...detailModel }); // asegura detail.debug = []
 
     const off = buildOffersModelFromDetail(wb);
     setOffersModel(off);
@@ -1250,7 +1250,7 @@ const ScreenVisits = () => {
                     <div key={row.comercial} className="text-sm">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{row.comercial}</span>
-                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.avgDays || 0)}`}></span><span>{Math.round(row.avgDays || 0)} días (n={row.total})</span></span>
+                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.avgDays || 0)}`}></span><span>{Math.round(row.avgDays || 0)} días (n={row.n})</span></span>
                       </div>
                       <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
                     </div>
@@ -1259,10 +1259,12 @@ const ScreenVisits = () => {
               </div>
             </section>
           )}
-          {detail && (
+          {detail?.debug && Array.isArray(detail.debug) && (
             <section className="p-4 bg-white rounded-xl border">
               <div className="font-semibold mb-2">Debug de columnas (Detalle)</div>
-              <pre className="text-xs bg-gray-50 p-2 rounded whitespace-pre-wrap">{detail.debug.join("\n")}</pre>
+              <pre className="text-xs bg-gray-50 p-2 rounded whitespace-pre-wrap">
+                {detail.debug.join("\n")}
+              </pre>
             </section>
           )}
         </main>
