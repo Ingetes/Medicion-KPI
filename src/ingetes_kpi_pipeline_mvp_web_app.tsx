@@ -66,7 +66,8 @@ const OWNER_KEYS  = ["propietario", "owner", "comercial", "vendedor", "ejecutivo
 const STAGE_KEYS  = ["etapa", "stage", "estado"];
 const CREATE_KEYS = ["fecha de creacion","fecha creación","created","created date","fecha creacion"];
 const CLOSE_KEYS  = ["fecha de cierre","fecha cierre","close date","fecha cierre real","fecha cierre oportunidad"];
-const CLOSED_WON_RX = /(closed\s*won|ganad|cerrad[oa].*ganad)/i;
+const CLOSED_WON_RX  = /(closed\s*won|ganad|cerrad[oa].*ganad)/i;
+const CLOSED_LOST_RX = /(closed\s*lost|perdid|cerrad[oa].*perdid)/i;
 
 // Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
@@ -826,6 +827,46 @@ function calcSalesCycleFromDetail(detailModel: any, mode: "all" | "won") {
   return { totalAvgDays, totalCount: totals.n, porComercial };
 }
 
+// Promedio de días SOLO con oportunidades cerradas (won+lost) o solo won
+function calcSalesCycleClosed(detailModel: any, onlyWon = false) {
+  const MS = 24 * 60 * 60 * 1000;
+  const rows = (detailModel?.allRows || []).filter((r: any) => {
+    // Debe tener ambas fechas para cerradas
+    if (!r?.created || !r?.closed) return false;
+
+    const stage = String(r.stage || "");
+    if (onlyWon) {
+      return CLOSED_WON_RX.test(stage);
+    }
+    // won + lost
+    return CLOSED_WON_RX.test(stage) || CLOSED_LOST_RX.test(stage);
+  });
+
+  const by = new Map<string, { sumMs: number; n: number }>();
+  for (const r of rows) {
+    const deltaMs = r.closed.getTime() - r.created.getTime();
+    if (!isFinite(deltaMs) || deltaMs < 0 || deltaMs > 3650 * MS) continue;
+
+    const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
+    acc.sumMs += deltaMs; acc.n += 1;
+    by.set(r.comercial, acc);
+  }
+
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, v]) => ({
+      comercial,
+      avgDays: v.n ? Math.round((v.sumMs / v.n) / MS) : 0,
+      n: v.n
+    }))
+    .sort((a, b) => a.avgDays - b.avgDays);
+
+  const totals = Array.from(by.values())
+    .reduce((acc, v) => ({ sumMs: acc.sumMs + v.sumMs, n: acc.n + v.n }), { sumMs: 0, n: 0 });
+  const totalAvgDays = totals.n ? Math.round((totals.sumMs / totals.n) / MS) : 0;
+
+  return { totalAvgDays, totalCount: totals.n, porComercial };
+}
+
 function calcSalesCycleAllOffers(detailModel: any) {
   // detailModel.allRows = [{ comercial, created: Date|null, closed: Date|null, stage: string }]
   const MS = 24 * 60 * 60 * 1000;
@@ -967,11 +1008,15 @@ const cycleData = useMemo(() => {
   if (!detail) return { kind: cycleMode, data: null };
   try {
     if (cycleMode === "offers") {
-      // TODAS las ofertas (abiertas + cerradas)
+      // TODAS las ofertas (abiertas + cerradas): cierre–creación para cerradas, hoy–creación para abiertas
       return { kind: "offers", data: calcSalesCycleAllOffers(detail) };
     }
-    // TODAS CERRADAS (won+lost) o SOLO GANADAS
-    return { kind: cycleMode, data: calcSalesCycleFromDetail(detail, cycleMode) };
+    if (cycleMode === "won") {
+      // Solo ganadas
+      return { kind: "won", data: calcSalesCycleClosed(detail, true) };
+    }
+    // "Todas cerradas" = won + lost (con fecha de cierre)
+    return { kind: "all", data: calcSalesCycleClosed(detail, false) };
   } catch {
     return { kind: cycleMode, data: null };
   }
