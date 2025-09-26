@@ -78,9 +78,9 @@ const parseDateCell = (val: any) => {
   return isNaN(d2.getTime()) ? null : new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
 };
 
-function daysBetween(a:Date, b:Date){
-  const MS = 24*3600*1000;
-  return Math.max(0, Math.round((b.getTime() - a.getTime())/MS));
+function daysBetween(a: Date, b: Date) {
+  const MS = 24 * 3600 * 1000;
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / MS));
 }
 
 const fmtCOP = (n: number) => n.toLocaleString("es-CO");
@@ -765,11 +765,6 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
 }
 
 // ====================== KPI Calcs =======================
-
-function daysBetween(a: Date, b: Date) {
-  const MS = 24 * 3600 * 1000;
-  return Math.max(0, Math.round((b.getTime() - a.getTime()) / MS));
-}
 
 function calcSalesCycleFromDetail(detailModel: any, mode: "all" | "won") {
   // detailModel.rows = [{ comercial, created: Date, closed: Date, stage: string }]
