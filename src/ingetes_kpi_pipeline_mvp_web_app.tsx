@@ -844,8 +844,9 @@ function calcSalesCycleClosed(detailModel: any, onlyWon = false) {
 
   const by = new Map<string, { sumMs: number; n: number }>();
   for (const r of rows) {
-    const deltaMs = r.closed.getTime() - r.created.getTime();
-    if (!isFinite(deltaMs) || deltaMs < 0 || deltaMs > 3650 * MS) continue;
+let deltaMs = r.closed.getTime() - r.created.getTime();
+if (!isFinite(deltaMs) || deltaMs > 3650 * MS) continue;
+if (deltaMs < 0) deltaMs = 0;
 
     const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
     acc.sumMs += deltaMs; acc.n += 1;
@@ -884,9 +885,9 @@ function calcSalesCycleAllOffers(detailModel: any) {
     if (!created) continue; // sin fecha de creación no se puede calcular
 
     const end = r.closed ?? todayUTC; // cerrada: cierre; abierta: hoy
-    const deltaMs = end.getTime() - created.getTime();
-
-    if (!isFinite(deltaMs) || deltaMs < 0 || deltaMs > 3650 * MS) continue;
+let deltaMs = r.closed.getTime() - r.created.getTime();
+if (!isFinite(deltaMs) || deltaMs > 3650 * MS) continue;
+if (deltaMs < 0) deltaMs = 0;
 
     const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
     acc.sumMs += deltaMs; acc.n += 1;
