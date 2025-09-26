@@ -1322,10 +1322,10 @@ const ScreenCycle = () => {
   // Encabezado (valor grande de la tarjeta superior) según modo:
   const headerValue = useMemo(() => {
     if (!detail || !cd?.data) return 0;
-    if (cd.kind === "offers") {
-      // Mostrar el total de ofertas
-      return (cd.data.total || 0);
-    }
+if (cd.kind === "offers") {
+  // Mostrar promedio de días de todas las ofertas
+  return (cd.data.totalAvgDays || 0);
+}
     // Mostrar el promedio total de días
     return (cd.data.totalAvgDays || 0);
   }, [detail, cd]);
@@ -1348,7 +1348,6 @@ const ScreenCycle = () => {
         {/* Tarjeta superior */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-
           {cd.kind !== "offers" ? (
             <>
               <div className="mt-2 flex items-end gap-3">
@@ -1408,16 +1407,25 @@ const ScreenCycle = () => {
 
             {/* Lista según modo */}
             <div className="space-y-2">
-              {!cd?.data ? null : cd.kind === "offers" ? (
-                // ---- Modo ofertas: mostramos conteo por comercial ----
-                cd.data.porComercial.map((row: any, i: number) => {
-                  const pct = Math.round((row.count / (maxBar || 1)) * 100);
-                  return (
-                    <div key={row.comercial} className="text-sm">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{i + 1}. {row.comercial}</span>
-                        <span className="tabular-nums text-gray-900">{row.count}</span>
-                      </div>
+            {!cd?.data ? null : cd.data.porComercial.map((row: any) => {
+              const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
+              return (
+                <div key={row.comercial} className="text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">{row.comercial}</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
+                      <span className="tabular-nums text-gray-900">
+                        {Math.round(row.avgDays || 0)} días (n={row.n})
+                      </span>
+                    </span>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded">
+                    <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                  </div>
+                </div>
+              );
+            })}
                       <div className="h-2 bg-gray-200 rounded">
                         <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
                       </div>
