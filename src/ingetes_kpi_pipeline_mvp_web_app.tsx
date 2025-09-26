@@ -1109,6 +1109,15 @@ const cycleData = useMemo(() => {
         <BackBar title="KPI • Tasa de Cierre (Win Rate)" />
         <main className="max-w-6xl mx-auto p-4 space-y-6">
           <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3">
+              <label className="text-sm text-gray-600">Meta Win Rate (%)</label>
+              <input
+                type="number"
+                className="ml-2 border rounded-lg px-2 py-1 text-sm w-20"
+                value={winRateTarget}
+                onChange={(e) => setWinRateTarget(Number(e.target.value))}
+              />
+            </div>
             <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
             <div className="mt-2 flex items-end gap-3">
               <div className={`w-3 h-3 rounded-full ${color(selected)}`}></div>
@@ -1386,6 +1395,15 @@ const ScreenCycle = () => {
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Tarjeta superior */}
         <section className="p-4 bg-white rounded-xl border">
+          <div className="mb-3">
+            <label className="text-sm text-gray-600">Meta Sales Cycle (días)</label>
+            <input
+              type="number"
+              className="ml-2 border rounded-lg px-2 py-1 text-sm w-20"
+              value={cycleTarget}
+              onChange={(e) => setCycleTarget(Number(e.target.value))}
+            />
+          </div>
           <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
           <div className="mt-2 flex items-end gap-3">
             <div className={`w-3 h-3 rounded-full ${colorDays(Number(headerValue) || 0)}`}></div>
@@ -1570,14 +1588,6 @@ const selected = useMemo(() => {
             <select className="mt-2 w-full border rounded px-2 py-1" value={selectedComercial} onChange={(e) => setSelectedComercial(e.target.value)}>
               {comercialesMenu.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-          </div>
-          <div className="p-4 bg-white rounded-xl border">
-            <div className="text-sm text-gray-500">Meta Win Rate (%)</div>
-            <input type="number" className="mt-2 w-24 border rounded px-2 py-1" value={winRateTarget} onChange={(e) => setWinRateTarget(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} />
-          </div>
-          <div className="p-4 bg-white rounded-xl border">
-            <div className="text-sm text-gray-500">Meta Sales Cycle (días)</div>
-            <input type="number" className="mt-2 w-24 border rounded px-2 py-1" value={cycleTarget} onChange={(e) => setCycleTarget(Math.max(1, Number(e.target.value) || 1))} />
           </div>
         </section>
 
