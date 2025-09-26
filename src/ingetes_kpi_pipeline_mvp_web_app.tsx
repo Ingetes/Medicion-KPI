@@ -850,7 +850,6 @@ export default function IngetesKPIApp() {
   const [offersModel, setOffersModel] = useState<any>(null);
   const [visitsModel, setVisitsModel] = useState<any>(null);
   const [pivot, setPivot] = useState<any>(null);
-  const [cycleMode, setCycleMode] = useState<"all" | "won">("all"); 
   const [cycleMode, setCycleMode] = useState<"all" | "won" | "offers">("all");
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
@@ -939,12 +938,6 @@ const cycleData = useMemo(() => {
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
   const winRate  = useMemo(() => pivot ? calcWinRateFromPivot(pivot)   : { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] }, [pivot]);
-  const salesCycle = useMemo(() => {
-    if (!detail) return { totalAvgDays: 0, totalCount: 0, porComercial: [] };
-    try { return calcSalesCycleFromDetail(detail, cycleMode); }
-    catch { return { totalAvgDays: 0, totalCount: 0, porComercial: [] }; }
-  }, [detail, cycleMode]);
-
   const visitsKPI = useMemo(() => {
   if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
   const periods = visitsModel.periods || [];
@@ -1276,79 +1269,158 @@ const ScreenVisits = () => {
   );
 };
 
-  const ScreenCycle = () => {
-    const data = useMemo(() => salesCycle, [salesCycle]);
-    const selected = useMemo(() => {
-      if (!detail) return 0; if (selectedComercial === "ALL") return data.totalAvgDays; return data.porComercial.find(r => r.comercial === selectedComercial)?.avgDays || 0;
-    }, [detail, data, selectedComercial]);
-    const max = useMemo(() => Math.max(data.totalAvgDays, ...(data.porComercial.map((r: any) => r.avgDays))), [data]);
-    const color = (d: number)=> d<=cycleTarget?"bg-green-500":(d<=cycleTarget*1.2?"bg-yellow-400":"bg-red-500");
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <BackBar title="KPI • Sales Cycle (días)" />
-        <main className="max-w-6xl mx-auto p-4 space-y-6">
+const ScreenCycle = () => {
+  // Usa el memoz de arriba que ya decide entre "all" | "won" | "offers"
+  const cd = useMemo(() => cycleData, [cycleData]);
+
+  // Helpers de color (meta en días para "all"/"won"; semáforo por meta de días)
+  const colorDays = (d: number) =>
+    d <= cycleTarget ? "bg-green-500" : (d <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
+
+  // Encabezado (valor grande de la tarjeta superior) según modo:
+  const headerValue = useMemo(() => {
+    if (!detail || !cd?.data) return 0;
+    if (cd.kind === "offers") {
+      // Mostrar el total de ofertas
+      return (cd.data.total || 0);
+    }
+    // Mostrar el promedio total de días
+    return (cd.data.totalAvgDays || 0);
+  }, [detail, cd]);
+
+  // Máximo para escalar barras (días u ofertas)
+  const maxBar = useMemo(() => {
+    if (!cd?.data) return 1;
+    if (cd.kind === "offers") {
+      return cd.data.max || 1;
+    }
+    // all/won → usar el mayor avgDays
+    const arr = cd.data.porComercial || [];
+    return Math.max(cd.data.totalAvgDays || 0, ...arr.map((r: any) => r.avgDays || 0)) || 1;
+  }, [cd]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <BackBar title="KPI • Sales Cycle (días)" />
+      <main className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* Tarjeta superior */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
+
+          {cd.kind !== "offers" ? (
+            <>
+              <div className="mt-2 flex items-end gap-3">
+                <div className={`w-3 h-3 rounded-full ${colorDays(Number(headerValue) || 0)}`}></div>
+                <div className="text-3xl font-bold">
+                  {Math.round(Number(headerValue) || 0)} días
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Verde ≤ meta ({cycleTarget} días) · Amarillo ≤ 120% meta · Rojo &gt; 120% meta
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-2 flex items-end gap-3">
+                <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                <div className="text-3xl font-bold tabular-nums">{headerValue} ofertas</div>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                Conteo total de ofertas (abiertas + cerradas) por comercial.
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Selector de modo */}
+        {detail && (
           <section className="p-4 bg-white rounded-xl border">
-            <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-            <div className="mt-2 flex items-end gap-3"><div className={`w-3 h-3 rounded-full ${color(selected || 0)}`}></div><div className="text-3xl font-bold">{Math.round(selected || 0)} días</div></div>
-            <div className="text-xs text-gray-500 mt-1">Verde ≤ meta ({cycleTarget} días) · Amarillo ≤ 120% meta · Rojo &gt; 120% meta</div>
-          </section>
-          {detail && (
-            <section className="p-4 bg-white rounded-xl border">
-              <div className="mb-3 font-semibold">Sales Cycle por comercial</div>
-<div className="flex items-center gap-2 mb-3">
-  <span className="text-sm text-gray-600">Modo:</span>
-  <div className="inline-flex rounded-lg border overflow-hidden">
-    <button
-      className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
-      onClick={() => setCycleMode("all")}
-      title="Promedio de días (Won + Lost)"
-    >
-      Todas cerradas
-    </button>
-    <button
-      className={`px-3 py-1 text-sm border-l ${cycleMode === "won" ? "bg-gray-900 text-white" : "bg-white"}`}
-      onClick={() => setCycleMode("won")}
-      title="Promedio de días (solo Closed Won)"
-    >
-      Solo ganadas
-    </button>
-    <button
-      className={`px-3 py-1 text-sm border-l ${cycleMode === "offers" ? "bg-gray-900 text-white" : "bg-white"}`}
-      onClick={() => setCycleMode("offers")}
-      title="Conteo de ofertas por comercial (abiertas + cerradas)"
-    >
-      Todas las ofertas
-    </button>
-  </div>
-</div>
-              <div className="space-y-2">
-                {data.porComercial.map((row: any) => {
-                  const pct = Math.round(((row.avgDays || 0) / (max || 1)) * 100);
+            <div className="mb-3 font-semibold">Sales Cycle por comercial</div>
+
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm text-gray-600">Modo:</span>
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setCycleMode("all")}
+                  title="Promedio de días (Won + Lost)"
+                >
+                  Todas cerradas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${cycleMode === "won" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setCycleMode("won")}
+                  title="Promedio de días (solo Closed Won)"
+                >
+                  Solo ganadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${cycleMode === "offers" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setCycleMode("offers")}
+                  title="Conteo de ofertas por comercial (abiertas + cerradas)"
+                >
+                  Todas las ofertas
+                </button>
+              </div>
+            </div>
+
+            {/* Lista según modo */}
+            <div className="space-y-2">
+              {!cd?.data ? null : cd.kind === "offers" ? (
+                // ---- Modo ofertas: mostramos conteo por comercial ----
+                cd.data.porComercial.map((row: any, i: number) => {
+                  const pct = Math.round((row.count / (maxBar || 1)) * 100);
+                  return (
+                    <div key={row.comercial} className="text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{i + 1}. {row.comercial}</span>
+                        <span className="tabular-nums text-gray-900">{row.count}</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 rounded">
+                        <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                // ---- Modo días (all/won): promedio de días ----
+                cd.data.porComercial.map((row: any) => {
+                  const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
                   return (
                     <div key={row.comercial} className="text-sm">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{row.comercial}</span>
-                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.avgDays || 0)}`}></span><span>{Math.round(row.avgDays || 0)} días (n={row.n})</span></span>
+                        <span className="flex items-center gap-2">
+                          <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
+                          <span className="tabular-nums text-gray-900">
+                            {Math.round(row.avgDays || 0)} días (n={row.n})
+                          </span>
+                        </span>
                       </div>
-                      <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
+                      <div className="h-2 bg-gray-200 rounded">
+                        <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                      </div>
                     </div>
                   );
-                })}
-              </div>
-            </section>
-          )}
-          {detail?.debug && Array.isArray(detail.debug) && (
-            <section className="p-4 bg-white rounded-xl border">
-              <div className="font-semibold mb-2">Debug de columnas (Detalle)</div>
-              <pre className="text-xs bg-gray-50 p-2 rounded whitespace-pre-wrap">
-                {detail.debug.join("\n")}
-              </pre>
-            </section>
-          )}
-        </main>
-      </div>
-    );
-  };
+                })
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Debug opcional */}
+        {detail?.debug && Array.isArray(detail.debug) && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="font-semibold mb-2">Debug de columnas (Detalle)</div>
+            <pre className="text-xs bg-gray-50 p-2 rounded whitespace-pre-wrap">
+              {detail.debug.join("\n")}
+            </pre>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+};
 
   // ===== KPI: Cumplimiento de Meta (Anual) =====
 const offersKPI = useMemo(() => {
