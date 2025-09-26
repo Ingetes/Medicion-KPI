@@ -1312,31 +1312,23 @@ const ScreenVisits = () => {
 };
 
 const ScreenCycle = () => {
-  // Usa el memoz de arriba que ya decide entre "all" | "won" | "offers"
+  // Usa el memo que arma los datos según cycleMode
   const cd = useMemo(() => cycleData, [cycleData]);
 
-  // Helpers de color (meta en días para "all"/"won"; semáforo por meta de días)
+  // Color del semáforo según meta de días
   const colorDays = (d: number) =>
-    d <= cycleTarget ? "bg-green-500" : (d <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
+    d <= cycleTarget ? "bg-green-500" :
+    d <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500";
 
-  // Encabezado (valor grande de la tarjeta superior) según modo:
+  // Valor grande de la tarjeta superior (siempre promedio de días)
   const headerValue = useMemo(() => {
     if (!detail || !cd?.data) return 0;
-if (cd.kind === "offers") {
-  // Mostrar promedio de días de todas las ofertas
-  return (cd.data.totalAvgDays || 0);
-}
-    // Mostrar el promedio total de días
-    return (cd.data.totalAvgDays || 0);
+    return cd.data.totalAvgDays || 0;
   }, [detail, cd]);
 
-  // Máximo para escalar barras (días u ofertas)
+  // Máximo para escalar barras
   const maxBar = useMemo(() => {
     if (!cd?.data) return 1;
-    if (cd.kind === "offers") {
-      return cd.data.max || 1;
-    }
-    // all/won → usar el mayor avgDays
     const arr = cd.data.porComercial || [];
     return Math.max(cd.data.totalAvgDays || 0, ...arr.map((r: any) => r.avgDays || 0)) || 1;
   }, [cd]);
@@ -1344,33 +1336,20 @@ if (cd.kind === "offers") {
   return (
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Sales Cycle (días)" />
+
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Tarjeta superior */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-          {cd.kind !== "offers" ? (
-            <>
-              <div className="mt-2 flex items-end gap-3">
-                <div className={`w-3 h-3 rounded-full ${colorDays(Number(headerValue) || 0)}`}></div>
-                <div className="text-3xl font-bold">
-                  {Math.round(Number(headerValue) || 0)} días
-                </div>
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Verde ≤ meta ({cycleTarget} días) · Amarillo ≤ 120% meta · Rojo &gt; 120% meta
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mt-2 flex items-end gap-3">
-                <div className="w-3 h-3 rounded-full bg-gray-400"></div>
-                <div className="text-3xl font-bold tabular-nums">{headerValue} ofertas</div>
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                Conteo total de ofertas (abiertas + cerradas) por comercial.
-              </div>
-            </>
-          )}
+          <div className="mt-2 flex items-end gap-3">
+            <div className={`w-3 h-3 rounded-full ${colorDays(Number(headerValue) || 0)}`}></div>
+            <div className="text-3xl font-bold">
+              {Math.round(Number(headerValue) || 0)} días
+            </div>
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            Verde ≤ meta ({cycleTarget} días) · Amarillo ≤ 120% meta · Rojo &gt; 120% meta
+          </div>
         </section>
 
         {/* Selector de modo */}
@@ -1384,7 +1363,7 @@ if (cd.kind === "offers") {
                 <button
                   className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
                   onClick={() => setCycleMode("all")}
-                  title="Promedio de días (Won + Lost)"
+                  title="Promedio de días (Closed Won + Closed Lost)"
                 >
                   Todas cerradas
                 </button>
@@ -1398,62 +1377,37 @@ if (cd.kind === "offers") {
                 <button
                   className={`px-3 py-1 text-sm border-l ${cycleMode === "offers" ? "bg-gray-900 text-white" : "bg-white"}`}
                   onClick={() => setCycleMode("offers")}
-                  title="Conteo de ofertas por comercial (abiertas + cerradas)"
+                  title="Promedio de días de todas las oportunidades (abiertas + cerradas)"
                 >
                   Todas las ofertas
                 </button>
               </div>
             </div>
 
-            {/* Lista según modo */}
+            {/* Lista por comercial */}
             <div className="space-y-2">
-            {!cd?.data ? null : cd.data.porComercial.map((row: any) => {
-              const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
-              return (
-                <div key={row.comercial} className="text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">{row.comercial}</span>
-                    <span className="flex items-center gap-2">
-                      <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
-                      <span className="tabular-nums text-gray-900">
-                        {Math.round(row.avgDays || 0)} días (n={row.n})
-                      </span>
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded">
-                    <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-                  </div>
-                </div>
-              );
-            })}
-                      <div className="h-2 bg-gray-200 rounded">
-                        <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                // ---- Modo días (all/won): promedio de días ----
-                cd.data.porComercial.map((row: any) => {
-                  const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
-                  return (
-                    <div key={row.comercial} className="text-sm">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{row.comercial}</span>
-                        <span className="flex items-center gap-2">
-                          <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
-                          <span className="tabular-nums text-gray-900">
-                            {Math.round(row.avgDays || 0)} días (n={row.n})
-                          </span>
+              {(cd?.data?.porComercial || []).map((row: any) => {
+                const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{row.comercial}</span>
+                      <span className="flex items-center gap-2">
+                        <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
+                        <span className="tabular-nums text-gray-900">
+                          {Math.round(row.avgDays || 0)} días (n={row.n})
                         </span>
-                      </div>
-                      <div className="h-2 bg-gray-200 rounded">
-                        <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-                      </div>
+                      </span>
                     </div>
-                  );
-                })
-              )}
+                    <div className="h-2 bg-gray-200 rounded">
+                      <div
+                        className="h-2 rounded bg-gray-700"
+                        style={{ width: pct + "%" }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
