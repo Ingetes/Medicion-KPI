@@ -2,9 +2,9 @@ import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
 // ========================= Utils =========================
-const norm = (s: any) => String(s ?? "")
-  .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
-  .toLowerCase().replace(/[()]/g," ").replace(/\s+/g," ").trim();
+const norm = (s:any) => String(s ?? "")
+  .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
 
 const toNumber = (v: any) => {
   if (v == null || v === "") return 0;
@@ -15,6 +15,32 @@ const toNumber = (v: any) => {
   const n = Number(s);
   return isFinite(n) ? n : 0;
 };
+
+function parseExcelDate(v:any): Date|null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "number") {
+    const d = XLSX.SSF.parse_date_code(v); // serial Excel
+    if (!d) return null;
+    return new Date(Date.UTC(d.y, d.m-1, d.d));
+  }
+  const s = String(v).trim();
+  const tryNative = new Date(s);
+  if (!isNaN(tryNative.getTime())) return tryNative;
+  const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m){
+    const dd = +m[1], mm = +m[2]-1, yy = +m[3]; 
+    const y = yy < 100 ? 2000 + yy : yy;
+    return new Date(y, mm, dd);
+  }
+  return null;
+}
+
+const CLOSED_RX = /(closed\s*won|closed\s*lost|ganad|perdid|cerrad[oa])/i;
+const OWNER_KEYS  = ["propietario", "owner", "comercial", "vendedor", "ejecutivo"];
+const STAGE_KEYS  = ["etapa", "stage", "estado"];
+const CREATE_KEYS = ["fecha de creacion","fecha creación","created","created date","fecha creacion"];
+const CLOSE_KEYS  = ["fecha de cierre","fecha cierre","close date","fecha cierre real","fecha cierre oportunidad"];
 
 // Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
@@ -51,11 +77,10 @@ const parseDateCell = (val: any) => {
   return isNaN(d2.getTime()) ? null : new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
 };
 
-const daysBetween = (d1: Date | null, d2: Date | null) => {
-  if (!d1 || !d2) return null as any;
-  const ms = d2.getTime() - d1.getTime();
-  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
-};
+function daysBetween(a:Date, b:Date){
+  const MS = 24*3600*1000;
+  return Math.max(0, Math.round((b.getTime() - a.getTime())/MS));
+}
 
 const fmtCOP = (n: number) => n.toLocaleString("es-CO");
 const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "open", "nuevo", "calificacion", "negociacion", "propuesta"];
@@ -195,10 +220,6 @@ async function readWorkbookRobust(file: File) {
 function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("VISITAS: hoja vacía");
-
-  const norm = (s:any) => String(s ?? "")
-    .normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
-    .toLowerCase().replace(/[()↑%]/g," ").replace(/\s+/g," ").trim();
 
   // Detectar fila de encabezados
   const scoreHead = (row:any[]) => {
@@ -669,35 +690,104 @@ function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
   }
   return { rows: out, sheetName, debug: dbg } as const;
 }
-function tryParseAnyDetail(wb: XLSX.WorkBook) {
-  const errs: string[] = []; let lastDebug: string[] | null = null;
-  for (const name of wb.SheetNames) {
-    try { const ws = wb.Sheets[name]; if (!ws) continue; return parseDetailSheetRobust(ws, name); }
-    catch (e: any) { if (e?.debug) lastDebug = e.debug; errs.push(`${name}: ${e?.message || e}`); }
+
+function tryParseAnyDetail(wb: XLSX.WorkBook){
+  const errs:string[] = [];
+
+  const pickCols = (A:any[][]) => {
+    // busca fila de encabezado y columnas
+    let headerRow = 0, best = -1;
+    let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1;
+
+    for (let r = 0; r < Math.min(50, A.length); r++){
+      const row = A[r] || [];
+      let sc = 0, co=-1, cs=-1, cc=-1, cl=-1;
+      row.forEach((v:any, c:number) => {
+        const h = norm(v);
+        if (OWNER_KEYS.some(k=> h.includes(k))) { sc+=3; co=c; }
+        if (STAGE_KEYS.some(k=> h.includes(k))) { sc+=1; cs=c; }
+        if (CREATE_KEYS.some(k=> h.includes(k))) { sc+=2; cc=c; }
+        if (CLOSE_KEYS.some(k=> h.includes(k)))  { sc+=2; cl=c; }
+      });
+      if (sc > best && (co>=0 || cs>=0)) { best=sc; headerRow=r; colOwner=co; colStage=cs; colCreated=cc; colClosed=cl; }
+    }
+    return { headerRow, colOwner, colStage, colCreated, colClosed };
+  };
+
+  for (const sn of wb.SheetNames){
+    try{
+      const ws = wb.Sheets[sn]; if (!ws) continue;
+      const A:any[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" }) as any[][];
+      if (!A.length) continue;
+
+      const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
+      if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
+
+      const rows:any[] = [];
+      let carryCom = "";
+
+      for (let r = headerRow+1; r < A.length; r++){
+        const row = A[r] || [];
+        // saltar vacías / subtotales / totales
+        const line = norm(row.join(" "));
+        if (!line) continue;
+        if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
+
+        // arrastre de comercial
+        const rawCom = row[colOwner];
+        if (rawCom != null && String(rawCom).trim() !== ""){
+          const mapped = mapComercial(rawCom);
+          if (mapped) carryCom = mapped;
+          // si es fila título (solo com y demás vacío), continuar
+          const soloTitulo = row.filter((v:any, c:number)=> c!==colOwner).every(v => String(v??"").trim()==="");
+          if (soloTitulo) continue;
+        }
+        const comercial = carryCom;
+        if (!comercial) continue; // no queremos "(Sin comercial)"
+
+        const stage = colStage>=0 ? norm(row[colStage]) : "";
+        const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
+        const closed  = colClosed>=0 ? parseExcelDate(row[colClosed])  : null;
+
+        // incluir solo cerradas (por fecha o por etapa cerrada)
+        const isClosed = (!!closed) || CLOSED_RX.test(stage);
+        if (!isClosed) continue;
+        if (!created || !closed) continue; // necesitamos ambas para el ciclo
+
+        rows.push({ comercial, created, closed, stage });
+      }
+
+      return { sheetName: sn, rows };
+    }catch(e:any){ errs.push(`${sn}: ${e?.message || e}`); }
   }
-  const err: any = new Error("Detalle: ninguna hoja válida. Detalles: " + errs.join(" | "));
-  if (lastDebug) err.debug = lastDebug; throw err;
+  throw new Error("DETALLADO: ninguna hoja válida. " + errs.join(" | "));
 }
 
 // ====================== KPI Calcs =======================
 
-function calcSalesCycleFromDetail(model: any) {
-  const isClosed = (et: string) => { const s = norm(et); return s.includes("closed won") || s.includes("closed lost") || s.includes("ganad") || s.includes("perdid"); };
-  const by = new Map<string, number[]>();
-  model.rows.forEach((row: any) => {
-    if (!isClosed(row.Etapa)) return;
-    let days: number | null = row.Antiguedad ?? null;
-    if (days == null) days = daysBetween(row.Fecha_creacion, row.Fecha_cierre) as any;
-    if (days == null) return;
-    const key = row.Comercial || "(Sin comercial)";
-    if (!by.has(key)) by.set(key, []);
-    (by.get(key) as number[]).push(days);
-  });
-  const porComercial = Array.from(by.entries()).map(([comercial, arr]) => ({ comercial, avgDays: arr.reduce((a, v) => a + v, 0) / arr.length, total: arr.length }))
-    .sort((a, b) => a.comercial.localeCompare(b.comercial));
-  const all = ([] as number[]).concat(...Array.from(by.values()));
-  const totalAvgDays = all.length ? (all.reduce((a, v) => a + v, 0) / all.length) : 0;
-  return { totalAvgDays, totalCount: all.length, porComercial };
+function calcSalesCycleFromDetail(detailModel:any){
+  // detailModel.rows = [{comercial, created:Date, closed:Date, stage:string}]
+  const by = new Map<string, {sum:number, n:number}>();
+
+  for (const r of detailModel.rows){
+    const d = daysBetween(r.created, r.closed);
+    // filtrar outliers absurdos (opcional)
+    if (!isFinite(d) || d < 0 || d > 3650) continue;
+
+    const k = r.comercial;
+    const acc = by.get(k) || { sum:0, n:0 };
+    acc.sum += d; acc.n += 1;
+    by.set(k, acc);
+  }
+
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, v]) => ({ comercial, avgDays: v.n ? Math.round(v.sum / v.n) : 0, n: v.n }))
+    .sort((a,b)=> a.avgDays - b.avgDays);
+
+  const totals = Array.from(by.values()).reduce((acc, v)=> ({ sum: acc.sum+v.sum, n: acc.n+v.n }), {sum:0, n:0});
+  const totalAvgDays = totals.n ? Math.round(totals.sum / totals.n) : 0;
+
+  return { totalAvgDays, totalCount: totals.n, porComercial };
 }
 
 // ================== UI (Router + Screens) ==================
@@ -747,24 +837,18 @@ const resetAll = () => {
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
 
 async function onDetailFile(f: File) {
-  setError("");
-  setFileDetailName(f.name);
+  setError(""); setFileDetailName(f.name);
   try {
     const wb = await readWorkbookRobust(f);
-    const detailModel = tryParseAnyDetail(wb);
+
+    const detailModel = tryParseAnyDetail(wb);   // ⬅️ modelo con rows
     setDetail(detailModel);
-    try {
-      const off = buildOffersModelFromDetail(wb);
-      setOffersModel(off);
-      if (off.periods?.length) setOffersPeriod(off.periods.at(-1)!);
-    } catch (e:any) {
-      setOffersModel(null);
-      setOffersPeriod("");
-    }
+
+    const off = buildOffersModelFromDetail(wb);
+    setOffersModel(off);
+    if (off.periods?.length) setOffersPeriod(off.periods.at(-1)!);
   } catch (e:any) {
-    setDetail(null);
-    setOffersModel(null);
-    setOffersPeriod("");
+    setDetail(null); setOffersModel(null); setOffersPeriod("");
     setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}`);
   }
 }
