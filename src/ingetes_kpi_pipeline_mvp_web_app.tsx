@@ -18,20 +18,29 @@ const toNumber = (v: any) => {
 
 function parseExcelDate(v:any): Date|null {
   if (v == null || v === "") return null;
-  if (v instanceof Date) return v;
+  if (v instanceof Date) {
+    // Normaliza a medianoche UTC
+    return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
+  }
   if (typeof v === "number") {
-    const d = XLSX.SSF.parse_date_code(v); // serial Excel
+    const d = XLSX.SSF.parse_date_code(v);
     if (!d) return null;
-    return new Date(Date.UTC(d.y, d.m-1, d.d));
+    return new Date(Date.UTC(d.y, d.m - 1, d.d));
   }
   const s = String(v).trim();
-  const tryNative = new Date(s);
-  if (!isNaN(tryNative.getTime())) return tryNative;
+
+  // dd/mm/yyyy o dd-mm-yyyy
   const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (m){
-    const dd = +m[1], mm = +m[2]-1, yy = +m[3]; 
+    const dd = +m[1], mm = +m[2]-1, yy = +m[3];
     const y = yy < 100 ? 2000 + yy : yy;
-    return new Date(y, mm, dd);
+    return new Date(Date.UTC(y, mm, dd));
+  }
+
+  // fallback ISO-like → normaliza a UTC (medianoche)
+  const d2 = new Date(s);
+  if (!isNaN(d2.getTime())) {
+    return new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
   }
   return null;
 }
@@ -767,35 +776,36 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
 // ====================== KPI Calcs =======================
 
 function calcSalesCycleFromDetail(detailModel: any, mode: "all" | "won") {
-  // detailModel.rows = [{ comercial, created: Date, closed: Date, stage: string }]
+  const MS = 24 * 60 * 60 * 1000;
+
   const rows = (detailModel?.rows || []).filter((r: any) => {
     if (!r.created || !r.closed) return false;
     if (mode === "won") return CLOSED_WON_RX.test(String(r.stage || ""));
-    // "all" = ganadas + perdidas
-    return true;
+    return true; // todas cerradas (ganadas + perdidas)
   });
 
-  const by = new Map<string, { sum: number; n: number }>();
+  // agrupamos por comercial acumulando milisegundos y cantidad
+  const by = new Map<string, { sumMs: number; n: number }>();
   for (const r of rows) {
-    const d = daysBetween(r.created, r.closed);
-    if (!isFinite(d) || d < 0 || d > 3650) continue; // saneamiento
-    const acc = by.get(r.comercial) || { sum: 0, n: 0 };
-    acc.sum += d; acc.n += 1;
+    const deltaMs = r.closed.getTime() - r.created.getTime();
+    if (!isFinite(deltaMs) || deltaMs < 0 || deltaMs > 3650 * MS) continue; // saneamiento
+    const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
+    acc.sumMs += deltaMs; acc.n += 1;
     by.set(r.comercial, acc);
   }
 
   const porComercial = Array.from(by.entries())
     .map(([comercial, v]) => ({
       comercial,
-      avgDays: v.n ? Math.round(v.sum / v.n) : 0,
+      avgDays: v.n ? Math.round((v.sumMs / v.n) / MS) : 0, // ← redondeo sólo al final
       n: v.n
     }))
     .sort((a, b) => a.avgDays - b.avgDays);
 
   const totals = Array.from(by.values())
-    .reduce((acc, v) => ({ sum: acc.sum + v.sum, n: acc.n + v.n }), { sum: 0, n: 0 });
+    .reduce((acc, v) => ({ sumMs: acc.sumMs + v.sumMs, n: acc.n + v.n }), { sumMs: 0, n: 0 });
 
-  const totalAvgDays = totals.n ? Math.round(totals.sum / totals.n) : 0;
+  const totalAvgDays = totals.n ? Math.round((totals.sumMs / totals.n) / MS) : 0;
 
   return { totalAvgDays, totalCount: totals.n, porComercial };
 }
