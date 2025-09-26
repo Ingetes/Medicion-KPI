@@ -41,6 +41,7 @@ const OWNER_KEYS  = ["propietario", "owner", "comercial", "vendedor", "ejecutivo
 const STAGE_KEYS  = ["etapa", "stage", "estado"];
 const CREATE_KEYS = ["fecha de creacion","fecha creación","created","created date","fecha creacion"];
 const CLOSE_KEYS  = ["fecha de cierre","fecha cierre","close date","fecha cierre real","fecha cierre oportunidad"];
+const CLOSED_WON_RX = /(closed\s*won|ganad|cerrad[oa].*ganad)/i;
 
 // Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
@@ -765,26 +766,40 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
 
 // ====================== KPI Calcs =======================
 
-function calcSalesCycleFromDetail(detailModel:any){
-  // detailModel.rows = [{comercial, created:Date, closed:Date, stage:string}]
-  const by = new Map<string, {sum:number, n:number}>();
+function daysBetween(a: Date, b: Date) {
+  const MS = 24 * 3600 * 1000;
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / MS));
+}
 
-  for (const r of detailModel.rows){
+function calcSalesCycleFromDetail(detailModel: any, mode: "all" | "won") {
+  // detailModel.rows = [{ comercial, created: Date, closed: Date, stage: string }]
+  const rows = (detailModel?.rows || []).filter((r: any) => {
+    if (!r.created || !r.closed) return false;
+    if (mode === "won") return CLOSED_WON_RX.test(String(r.stage || ""));
+    // "all" = ganadas + perdidas
+    return true;
+  });
+
+  const by = new Map<string, { sum: number; n: number }>();
+  for (const r of rows) {
     const d = daysBetween(r.created, r.closed);
-    // filtrar outliers absurdos (opcional)
-    if (!isFinite(d) || d < 0 || d > 3650) continue;
-
-    const k = r.comercial;
-    const acc = by.get(k) || { sum:0, n:0 };
+    if (!isFinite(d) || d < 0 || d > 3650) continue; // saneamiento
+    const acc = by.get(r.comercial) || { sum: 0, n: 0 };
     acc.sum += d; acc.n += 1;
-    by.set(k, acc);
+    by.set(r.comercial, acc);
   }
 
   const porComercial = Array.from(by.entries())
-    .map(([comercial, v]) => ({ comercial, avgDays: v.n ? Math.round(v.sum / v.n) : 0, n: v.n }))
-    .sort((a,b)=> a.avgDays - b.avgDays);
+    .map(([comercial, v]) => ({
+      comercial,
+      avgDays: v.n ? Math.round(v.sum / v.n) : 0,
+      n: v.n
+    }))
+    .sort((a, b) => a.avgDays - b.avgDays);
 
-  const totals = Array.from(by.values()).reduce((acc, v)=> ({ sum: acc.sum+v.sum, n: acc.n+v.n }), {sum:0, n:0});
+  const totals = Array.from(by.values())
+    .reduce((acc, v) => ({ sum: acc.sum + v.sum, n: acc.n + v.n }), { sum: 0, n: 0 });
+
   const totalAvgDays = totals.n ? Math.round(totals.sum / totals.n) : 0;
 
   return { totalAvgDays, totalCount: totals.n, porComercial };
@@ -814,10 +829,11 @@ export default function IngetesKPIApp() {
   const [offersModel, setOffersModel] = useState<any>(null);
   const [visitsModel, setVisitsModel] = useState<any>(null);
   const [pivot, setPivot] = useState<any>(null);
+  const [cycleMode, setCycleMode] = useState<"all" | "won">("all"); 
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
-  const [visitsTarget, setVisitsTarget] = useState<number>(10)
-  const [offersTarget, setOffersTarget] = useState<number>(5);
+  const [visitsTarget, setVisitsTarget] = useState<number>(20)
+  const [offersTarget, setOffersTarget] = useState<number>(20);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -890,9 +906,10 @@ async function onPivotFile(f: File) {
   const winRate  = useMemo(() => pivot ? calcWinRateFromPivot(pivot)   : { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] }, [pivot]);
   const salesCycle = useMemo(() => {
     if (!detail) return { totalAvgDays: 0, totalCount: 0, porComercial: [] };
-    try { return calcSalesCycleFromDetail(detail); }
+    try { return calcSalesCycleFromDetail(detail, cycleMode); }
     catch { return { totalAvgDays: 0, totalCount: 0, porComercial: [] }; }
-  }, [detail]);
+  }, [detail, cycleMode]);
+
   const visitsKPI = useMemo(() => {
   if (!visitsModel) return { total: 0, porComercial: [] as any[], periods: [] as string[], period: "" };
   const periods = visitsModel.periods || [];
@@ -1243,6 +1260,23 @@ const ScreenVisits = () => {
           {detail && (
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Sales Cycle por comercial</div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-sm text-gray-600">Modo:</span>
+                  <div className="inline-flex rounded-lg border overflow-hidden">
+                    <button
+                      className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
+                      onClick={() => setCycleMode("all")}
+                    >
+                      Todas cerradas
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-sm border-l ${cycleMode === "won" ? "bg-gray-900 text-white" : "bg-white"}`}
+                      onClick={() => setCycleMode("won")}
+                    >
+                      Solo ganadas
+                    </button>
+                  </div>
+                </div>
               <div className="space-y-2">
                 {data.porComercial.map((row: any) => {
                   const pct = Math.round(((row.avgDays || 0) / (max || 1)) * 100);
