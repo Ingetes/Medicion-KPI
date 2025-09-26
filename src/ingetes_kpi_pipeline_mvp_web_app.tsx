@@ -16,6 +16,22 @@ const toNumber = (v: any) => {
   return isFinite(n) ? n : 0;
 };
 
+function calcOfferCountFromDetail(detailModel:any){
+  const by = new Map<string, number>();
+  const all = detailModel?.allRows || [];
+  for (const r of all) {
+    // ya viene filtrado sin subtotales y con arrastre de comercial
+    by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
+  }
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a,b)=> b.count - a.count);
+
+  const total = porComercial.reduce((a,x)=> a + x.count, 0);
+  const max   = porComercial.length ? porComercial[0].count : 0;
+  return { total, max, porComercial };
+}
+
 function parseExcelDate(v:any): Date|null {
   if (v == null || v === "") return null;
   if (v instanceof Date) {
@@ -705,7 +721,6 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
   const errs:string[] = [];
 
   const pickCols = (A:any[][]) => {
-    // busca fila de encabezado y columnas
     let headerRow = 0, best = -1;
     let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1;
 
@@ -714,8 +729,8 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
       let sc = 0, co=-1, cs=-1, cc=-1, cl=-1;
       row.forEach((v:any, c:number) => {
         const h = norm(v);
-        if (OWNER_KEYS.some(k=> h.includes(k))) { sc+=3; co=c; }
-        if (STAGE_KEYS.some(k=> h.includes(k))) { sc+=1; cs=c; }
+        if (OWNER_KEYS.some(k=> h.includes(k)))  { sc+=3; co=c; }
+        if (STAGE_KEYS.some(k=> h.includes(k)))  { sc+=1; cs=c; }
         if (CREATE_KEYS.some(k=> h.includes(k))) { sc+=2; cc=c; }
         if (CLOSE_KEYS.some(k=> h.includes(k)))  { sc+=2; cl=c; }
       });
@@ -733,12 +748,12 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
       const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
       if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
 
-      const rows:any[] = [];
+      const rows:any[] = [];       // ← solo CERRADAS con fechas (para Sales Cycle)
+      const allRows:any[] = [];    // ← TODAS las ofertas (para el conteo)
       let carryCom = "";
 
       for (let r = headerRow+1; r < A.length; r++){
         const row = A[r] || [];
-        // saltar vacías / subtotales / totales
         const line = norm(row.join(" "));
         if (!line) continue;
         if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
@@ -748,26 +763,27 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
         if (rawCom != null && String(rawCom).trim() !== ""){
           const mapped = mapComercial(rawCom);
           if (mapped) carryCom = mapped;
-          // si es fila título (solo com y demás vacío), continuar
           const soloTitulo = row.filter((v:any, c:number)=> c!==colOwner).every(v => String(v??"").trim()==="");
           if (soloTitulo) continue;
         }
         const comercial = carryCom;
-        if (!comercial) continue; // no queremos "(Sin comercial)"
+        if (!comercial) continue;
 
-        const stage = colStage>=0 ? norm(row[colStage]) : "";
+        // recolectar para "todas las ofertas"
+        const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
         const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
-        const closed  = colClosed>=0 ? parseExcelDate(row[colClosed])  : null;
+        const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
 
-        // incluir solo cerradas (por fecha o por etapa cerrada)
-        const isClosed = (!!closed) || CLOSED_RX.test(stage);
-        if (!isClosed) continue;
-        if (!created || !closed) continue; // necesitamos ambas para el ciclo
+        allRows.push({ comercial, stage, created, closed });
 
-        rows.push({ comercial, created, closed, stage });
+        // filas cerradas para Sales Cycle (all / won)
+        const isClosed = (!!closed) || CLOSED_RX.test(norm(stage));
+        if (isClosed && created && closed) {
+          rows.push({ comercial, created, closed, stage });
+        }
       }
 
-      return { sheetName: sn, rows };
+      return { sheetName: sn, rows, allRows };
     }catch(e:any){ errs.push(`${sn}: ${e?.message || e}`); }
   }
   throw new Error("DETALLADO: ninguna hoja válida. " + errs.join(" | "));
@@ -835,6 +851,7 @@ export default function IngetesKPIApp() {
   const [visitsModel, setVisitsModel] = useState<any>(null);
   const [pivot, setPivot] = useState<any>(null);
   const [cycleMode, setCycleMode] = useState<"all" | "won">("all"); 
+  const [cycleMode, setCycleMode] = useState<"all" | "won" | "offers">("all");
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
   const [visitsTarget, setVisitsTarget] = useState<number>(20)
@@ -905,6 +922,19 @@ async function onPivotFile(f: File) {
     setError(prev => (prev ? prev + "\n" : "") + `Resumen: ${e?.message || e}`);
   }
 }
+
+const cycleData = useMemo(() => {
+  if (!detail) return { kind: cycleMode, data: null };
+  try {
+    if (cycleMode === "offers") {
+      return { kind: "offers", data: calcOfferCountFromDetail(detail) };
+    }
+    // "all" o "won": promedio de días
+    return { kind: cycleMode, data: calcSalesCycleFromDetail(detail, cycleMode) };
+  } catch {
+    return { kind: cycleMode, data: null };
+  }
+}, [detail, cycleMode]);
 
   const comercialesMenu = useMemo(() => FIXED_COMERCIALES, []);
   const pipeline = useMemo(() => pivot ? calcPipelineFromPivot(pivot) : { total: 0, porComercial: [] }, [pivot]);
@@ -1265,23 +1295,32 @@ const ScreenVisits = () => {
           {detail && (
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Sales Cycle por comercial</div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-sm text-gray-600">Modo:</span>
-                  <div className="inline-flex rounded-lg border overflow-hidden">
-                    <button
-                      className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
-                      onClick={() => setCycleMode("all")}
-                    >
-                      Todas cerradas
-                    </button>
-                    <button
-                      className={`px-3 py-1 text-sm border-l ${cycleMode === "won" ? "bg-gray-900 text-white" : "bg-white"}`}
-                      onClick={() => setCycleMode("won")}
-                    >
-                      Solo ganadas
-                    </button>
-                  </div>
-                </div>
+<div className="flex items-center gap-2 mb-3">
+  <span className="text-sm text-gray-600">Modo:</span>
+  <div className="inline-flex rounded-lg border overflow-hidden">
+    <button
+      className={`px-3 py-1 text-sm ${cycleMode === "all" ? "bg-gray-900 text-white" : "bg-white"}`}
+      onClick={() => setCycleMode("all")}
+      title="Promedio de días (Won + Lost)"
+    >
+      Todas cerradas
+    </button>
+    <button
+      className={`px-3 py-1 text-sm border-l ${cycleMode === "won" ? "bg-gray-900 text-white" : "bg-white"}`}
+      onClick={() => setCycleMode("won")}
+      title="Promedio de días (solo Closed Won)"
+    >
+      Solo ganadas
+    </button>
+    <button
+      className={`px-3 py-1 text-sm border-l ${cycleMode === "offers" ? "bg-gray-900 text-white" : "bg-white"}`}
+      onClick={() => setCycleMode("offers")}
+      title="Conteo de ofertas por comercial (abiertas + cerradas)"
+    >
+      Todas las ofertas
+    </button>
+  </div>
+</div>
               <div className="space-y-2">
                 {data.porComercial.map((row: any) => {
                   const pct = Math.round(((row.avgDays || 0) / (max || 1)) * 100);
