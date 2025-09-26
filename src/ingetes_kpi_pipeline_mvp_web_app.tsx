@@ -1457,16 +1457,6 @@ const ScreenCycle = () => {
             </div>
           </section>
         )}
-
-        {/* Debug opcional */}
-        {detail?.debug && Array.isArray(detail.debug) && (
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="font-semibold mb-2">Debug de columnas (Detalle)</div>
-            <pre className="text-xs bg-gray-50 p-2 rounded whitespace-pre-wrap">
-              {detail.debug.join("\n")}
-            </pre>
-          </section>
-        )}
       </main>
     </div>
   );
