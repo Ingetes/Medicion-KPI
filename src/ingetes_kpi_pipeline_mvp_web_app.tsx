@@ -826,6 +826,47 @@ function calcSalesCycleFromDetail(detailModel: any, mode: "all" | "won") {
   return { totalAvgDays, totalCount: totals.n, porComercial };
 }
 
+function calcSalesCycleAllOffers(detailModel: any) {
+  // detailModel.allRows = [{ comercial, created: Date|null, closed: Date|null, stage: string }]
+  const MS = 24 * 60 * 60 * 1000;
+  const todayUTC = new Date(Date.UTC(
+    new Date().getUTCFullYear(),
+    new Date().getUTCMonth(),
+    new Date().getUTCDate()
+  ));
+
+  const all = detailModel?.allRows || [];
+  const by = new Map<string, { sumMs: number; n: number }>();
+
+  for (const r of all) {
+    const created = r.created;
+    if (!created) continue; // sin fecha de creación no se puede calcular
+
+    const end = r.closed ?? todayUTC; // cerrada: cierre; abierta: hoy
+    const deltaMs = end.getTime() - created.getTime();
+
+    if (!isFinite(deltaMs) || deltaMs < 0 || deltaMs > 3650 * MS) continue;
+
+    const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
+    acc.sumMs += deltaMs; acc.n += 1;
+    by.set(r.comercial, acc);
+  }
+
+  const porComercial = Array.from(by.entries())
+    .map(([comercial, v]) => ({
+      comercial,
+      avgDays: v.n ? Math.round((v.sumMs / v.n) / MS) : 0,
+      n: v.n
+    }))
+    .sort((a, b) => a.avgDays - b.avgDays);
+
+  const totals = Array.from(by.values())
+    .reduce((acc, v) => ({ sumMs: acc.sumMs + v.sumMs, n: acc.n + v.n }), { sumMs: 0, n: 0 });
+  const totalAvgDays = totals.n ? Math.round((totals.sumMs / totals.n) / MS) : 0;
+
+  return { totalAvgDays, totalCount: totals.n, porComercial };
+}
+
 // ================== UI (Router + Screens) ==================
 const RouteHome = ({ onEnter }: { onEnter: () => void }) => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -926,9 +967,10 @@ const cycleData = useMemo(() => {
   if (!detail) return { kind: cycleMode, data: null };
   try {
     if (cycleMode === "offers") {
-      return { kind: "offers", data: calcOfferCountFromDetail(detail) };
+      // TODAS las ofertas (abiertas + cerradas)
+      return { kind: "offers", data: calcSalesCycleAllOffers(detail) };
     }
-    // "all" o "won": promedio de días
+    // TODAS CERRADAS (won+lost) o SOLO GANADAS
     return { kind: cycleMode, data: calcSalesCycleFromDetail(detail, cycleMode) };
   } catch {
     return { kind: cycleMode, data: null };
