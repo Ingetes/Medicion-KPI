@@ -352,6 +352,33 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
 
   // --- helpers ---
+type MetaRecord = {
+  comercial: string;
+  metaAnual: number;
+  metaOfertas: number;
+  metaVisitas: number;
+};
+type MetasResponse = { year: number; metas: MetaRecord[] };
+
+const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
+const METAS_API_KEY = 'INGETES';
+
+async function fetchMetas(year: number): Promise<MetasResponse> {
+  const res = await fetch(`${METAS_API_URL}?year=${year}`);
+  if (!res.ok) throw new Error('No se pudieron leer las metas');
+  return res.json();
+}
+
+async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
+  const res = await fetch(METAS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Error guardando metas');
+}
+
   const n = (s: any) =>
     String(s ?? "")
       .normalize("NFKD")
@@ -416,7 +443,6 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
     ) continue;
 
     // si trae comercial explícito en esta fila, actualizar el "current"
-// si la celda trae comercial explícito (texto NO vacío), actualiza el "current"
 const rawCom = row[idxCom];
 if (rawCom != null && String(rawCom).trim() !== "") {
   const mapped = mapComercial(rawCom);
@@ -1595,7 +1621,6 @@ const selected = useMemo(() => {
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
-            <div className="text-xs text-gray-500 mb-2">Filas por Comercial, columnas por Etapa, métricas: Suma de Precio total / Recuento de registros</div>
             <input
               type="file"
               accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
@@ -1606,7 +1631,6 @@ const selected = useMemo(() => {
           </div>
           <div className="p-4 bg-white rounded-xl border">
             <div className="font-semibold">Archivo DETALLADO</div>
-            <div className="text-xs text-gray-500 mb-2">Incluye: Propietario, Etapa, Antigüedad o Fechas, Importe, Probabilidad, Producto, Precio total, Cuenta</div>
             <input type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv" onChange={(e) => e.target.files && onDetailFile(e.target.files[0])} className="block text-sm" />
             <div className="text-xs text-gray-500 mt-1">{fileDetailName || "Sin archivo"}</div>
           </div>
