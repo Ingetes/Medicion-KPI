@@ -363,6 +363,14 @@ type MetasResponse = { year: number; metas: MetaRecord[] };
 const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
 const METAS_API_KEY = 'INGETES';
 
+function getMeta(comercial: string, tipo: "anual" | "ofertas" | "visitas"): number {
+  const r = settingsRows.find(x => x.comercial === comercial);
+  if (!r) return 0;
+  if (tipo === "anual") return r.metaAnual;
+  if (tipo === "ofertas") return r.metaOfertas;
+  return r.metaVisitas;
+}
+
 async function fetchMetas(year: number): Promise<MetasResponse> {
   const res = await fetch(`${METAS_API_URL}?year=${year}`);
   if (!res.ok) throw new Error('No se pudieron leer las metas');
@@ -969,6 +977,94 @@ export default function IngetesKPIApp() {
   const [info, setInfo] = useState("");
   const [winRateTarget, setWinRateTarget] = useState(30);
   const [cycleTarget, setCycleTarget] = useState(45);
+
+// ===== Ajustes (metas por comercial) =====
+const [showSettings, setShowSettings] = useState(false);
+const [settingsYear, setSettingsYear] = useState<number>(new Date().getFullYear());
+const [settingsRows, setSettingsRows] = useState<MetaRecord[]>([]);
+const [loadingSettings, setLoadingSettings] = useState(false);
+const [savingSettings, setSavingSettings] = useState(false);
+
+// Utilidad: sacar lista de comerciales detectados (de los archivos cargados)
+// Ajusta los nombres si tus modelos se llaman distinto.
+function getAllComerciales(): string[] {
+  const set = new Set<string>();
+
+  // Si tienes un modelo del RESUMEN (pipeline/ganadas), agrégalo aquí:
+  if (summary?.allRows) {
+    summary.allRows.forEach((r: any) => {
+      const c = String(r.comercial || r.Comercial || "").trim();
+      if (c) set.add(c);
+    });
+  }
+  // Si tienes modelo del DETALLADO:
+  if (detail?.allRows) {
+    detail.allRows.forEach((r: any) => {
+      const c = String(r.comercial || r.Comercial || "").trim();
+      if (c) set.add(c);
+    });
+  }
+  // Si tienes modelo de VISITAS:
+  if (visits?.allRows) {
+    visits.allRows.forEach((r: any) => {
+      const c = String(r.comercial || r.Comercial || "").trim();
+      if (c) set.add(c);
+    });
+  }
+
+  // Si no hay archivos, deja vacío (o pon tu lista fija)
+  return Array.from(set);
+}
+
+// Abre el panel: lee metas del año y mergea con los comerciales detectados
+async function openSettings() {
+  try {
+    setShowSettings(true);
+    setLoadingSettings(true);
+
+    const comerciales = getAllComerciales(); // puede venir vacío si aún no cargaron archivos
+    const resp = await fetchMetas(settingsYear);
+
+    // Mapa de metas remotas
+    const map = new Map<string, MetaRecord>();
+    resp.metas.forEach(m => map.set(m.comercial, m));
+
+    // Construir filas a editar: una por comercial
+    const rows: MetaRecord[] = (comerciales.length ? comerciales : Array.from(map.keys())).map(c => {
+      const rem = map.get(c);
+      return {
+        comercial: c,
+        metaAnual: rem?.metaAnual ?? 0,
+        metaOfertas: rem?.metaOfertas ?? 0,
+        metaVisitas: rem?.metaVisitas ?? 0
+      };
+    });
+
+    // Ordenar alfabético para que sea cómodo
+    rows.sort((a, b) => a.comercial.localeCompare(b.comercial));
+
+    setSettingsRows(rows);
+  } catch (e) {
+    console.error(e);
+    setSettingsRows([]);
+  } finally {
+    setLoadingSettings(false);
+  }
+}
+
+// Guardar en Sheets
+async function saveSettings() {
+  try {
+    setSavingSettings(true);
+    await saveMetas(settingsYear, settingsRows);
+    alert("Metas guardadas ✅");
+    setShowSettings(false);
+  } catch (e:any) {
+    alert("Error guardando metas: " + e.message);
+  } finally {
+    setSavingSettings(false);
+  }
+}
 
 const resetAll = () => {
   setFilePivotName("");  setPivot(null);
@@ -1596,10 +1692,131 @@ const selected = useMemo(() => {
           <h2 className="text-xl md:text-2xl font-bold">Menú principal</h2>
           <div className="flex items-center gap-2">
             <button className="px-3 py-2 rounded border" onClick={resetAll}>Reiniciar</button>
+              <button
+              className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50"
+              onClick={openSettings}
+              title="Editar metas por comercial"
+            >
+              Ajustes
+            </button>
           </div>
         </div>
       </header>
+{showSettings && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="w-full max-w-3xl bg-white rounded-xl shadow-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-semibold">Ajustes de metas por comercial</h3>
+        <button
+          className="text-sm px-2 py-1 rounded hover:bg-gray-100"
+          onClick={() => setShowSettings(false)}
+        >
+          Cerrar
+        </button>
+      </div>
 
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-sm text-gray-600">Año:</span>
+        <input
+          type="number"
+          className="w-28 border rounded px-2 py-1 text-sm"
+          value={settingsYear}
+          onChange={(e) => setSettingsYear(Number(e.target.value))}
+          onBlur={openSettings} // recarga metas al cambiar de año
+        />
+        {loadingSettings && <span className="text-xs text-gray-500">Cargando…</span>}
+      </div>
+
+      <div className="overflow-auto max-h-[60vh]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-2 pr-2">Comercial</th>
+              <th className="py-2 pr-2">Meta anual</th>
+              <th className="py-2 pr-2">Meta ofertas</th>
+              <th className="py-2 pr-2">Meta visitas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {settingsRows.map((r, idx) => (
+              <tr key={r.comercial} className="border-t">
+                <td className="py-2 pr-2">{r.comercial}</td>
+                <td className="py-2 pr-2">
+                  <input
+                    type="number"
+                    className="w-40 border rounded px-2 py-1 text-sm text-right"
+                    value={r.metaAnual}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setSettingsRows(prev => {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], metaAnual: isNaN(v) ? 0 : v };
+                        return copy;
+                      });
+                    }}
+                  />
+                </td>
+                <td className="py-2 pr-2">
+                  <input
+                    type="number"
+                    className="w-24 border rounded px-2 py-1 text-sm text-right"
+                    value={r.metaOfertas}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setSettingsRows(prev => {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], metaOfertas: isNaN(v) ? 0 : v };
+                        return copy;
+                      });
+                    }}
+                  />
+                </td>
+                <td className="py-2 pr-2">
+                  <input
+                    type="number"
+                    className="w-24 border rounded px-2 py-1 text-sm text-right"
+                    value={r.metaVisitas}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setSettingsRows(prev => {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], metaVisitas: isNaN(v) ? 0 : v };
+                        return copy;
+                      });
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+            {!loadingSettings && settingsRows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-6 text-center text-gray-500">
+                  No hay comerciales detectados todavía. Carga un archivo o ingresa metas en tu Sheet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50"
+          onClick={() => setShowSettings(false)}
+        >
+          Cancelar
+        </button>
+        <button
+          className="px-3 py-1.5 text-sm rounded-lg text-white bg-gray-900 disabled:opacity-50"
+          disabled={savingSettings}
+          onClick={saveSettings}
+        >
+          {savingSettings ? "Guardando…" : "Guardar cambios"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {(error || info) && (
           <div className="space-y-2">
