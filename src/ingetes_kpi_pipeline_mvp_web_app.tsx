@@ -1636,10 +1636,6 @@ const selected = useMemo(() => {
           </div>
          <div className="p-4 bg-white rounded-xl border">
           <div className="font-semibold">Archivo VISITAS</div>
-          <div className="text-xs text-gray-500 mb-2">
-            Columnas sugeridas: <em>Comercial</em> / <em>Propietario</em>, <em>Fecha</em> (opcional), <em>Visitas</em> (opcional).
-            Si no hay columna de Visitas, cada fila cuenta como 1.
-          </div>
           <input
             type="file"
             accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
