@@ -1,6 +1,31 @@
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
+type MetaRecord = {
+  comercial: string;
+  metaAnual: number;
+  metaOfertas: number;
+  metaVisitas: number;
+};
+type MetasResponse = { year: number; metas: MetaRecord[] };
+
+const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
+const METAS_API_KEY = 'INGETES';
+
+function getMeta(comercial: string, tipo: "anual" | "ofertas" | "visitas"): number {
+  const r = settingsRows.find(x => x.comercial === comercial);
+  if (!r) return 0;
+  if (tipo === "anual") return r.metaAnual;
+  if (tipo === "ofertas") return r.metaOfertas;
+  return r.metaVisitas;
+}
+
+async function fetchMetas(year: number): Promise<MetasResponse> {
+  const res = await fetch(`${METAS_API_URL}?year=${year}`);
+  if (!res.ok) throw new Error('No se pudieron leer las metas');
+  return res.json();
+}
+
 // ========================= Utils =========================
 const norm = (s:any) => String(s ?? "")
   .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
@@ -352,30 +377,6 @@ function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
   if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
 
   // --- helpers ---
-type MetaRecord = {
-  comercial: string;
-  metaAnual: number;
-  metaOfertas: number;
-  metaVisitas: number;
-};
-type MetasResponse = { year: number; metas: MetaRecord[] };
-
-const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
-const METAS_API_KEY = 'INGETES';
-
-function getMeta(comercial: string, tipo: "anual" | "ofertas" | "visitas"): number {
-  const r = settingsRows.find(x => x.comercial === comercial);
-  if (!r) return 0;
-  if (tipo === "anual") return r.metaAnual;
-  if (tipo === "ofertas") return r.metaOfertas;
-  return r.metaVisitas;
-}
-
-async function fetchMetas(year: number): Promise<MetasResponse> {
-  const res = await fetch(`${METAS_API_URL}?year=${year}`);
-  if (!res.ok) throw new Error('No se pudieron leer las metas');
-  return res.json();
-}
 
 async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
   const res = await fetch(METAS_API_URL, {
