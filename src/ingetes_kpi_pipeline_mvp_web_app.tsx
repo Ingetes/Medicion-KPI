@@ -11,7 +11,7 @@ type MetaRecord = {
 type MetasResponse = { year: number; metas: MetaRecord[] };
 
 const METAS_API_URL =
-  "https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec";
+  "https://script.google.com/macros/s/AKfycbwjPQjJ1OZmH6YNrIVAtM8xLHcNfYxAv668PdoB5Bab/dev";
 const METAS_API_KEY = "INGETES";
 
 async function fetchMetas(year: number): Promise<MetasResponse> {
@@ -390,7 +390,6 @@ function buildVisitsModelFromWorkbook(wb: XLSX.WorkBook) {
 }
 
 // ================== DETALLADO → OFERTAS ==================
-import * as XLSX from "xlsx";
 
 type OfferRow = {
   comercial: string;
@@ -882,6 +881,20 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
     }catch(e:any){ errs.push(`${sn}: ${e?.message || e}`); }
   }
   throw new Error("DETALLADO: ninguna hoja válida. " + errs.join(" | "));
+}
+
+// Construye el modelo de Ofertas (filas con comercial + "YYYY-MM") usando el DETALLE ya parseado
+function buildOffersModelFromDetailModel(detailModel: any) {
+  const rows = (detailModel?.allRows || [])
+    .filter((r:any) => r?.created instanceof Date) // necesitamos fecha de creación
+    .map((r:any) => {
+      const d = r.created as Date;
+      const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+      return { comercial: r.comercial, ym };
+    });
+
+  const periods = Array.from(new Set(rows.map((r:any)=>r.ym))).sort();
+  return { rows, periods };
 }
 
 // ====================== KPI Calcs =======================
