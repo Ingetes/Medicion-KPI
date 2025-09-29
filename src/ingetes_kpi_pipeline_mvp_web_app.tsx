@@ -23,11 +23,23 @@ async function fetchMetas(year: number): Promise<MetasResponse> {
 async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
   const res = await fetch(METAS_API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // 👇 Evita preflight CORS
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
     body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
   });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || "Error guardando metas");
+
+  // Si Apps Script devuelve 200, leemos el JSON
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    // Si por alguna razón no hay JSON, lo tratamos como error
+    throw new Error("Respuesta inválida del servidor");
+  }
+
+  if (!json.ok) {
+    throw new Error(json.error || "Error guardando metas");
+  }
 }
 
 // ========================= Utils =========================
