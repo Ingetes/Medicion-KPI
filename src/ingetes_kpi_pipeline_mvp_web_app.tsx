@@ -362,6 +362,85 @@ type MetasResponse = { year: number; metas: MetaRecord[] };
 
 const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
 const METAS_API_KEY = 'INGETES';
+const SHEET_NAME = 'Metas';
+
+function toNum(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/[^\d.-]/g, '');
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+// (opcional) clave desde propiedades en lugar de hardcode
+function getApiKey() {
+  return PropertiesService.getScriptProperties().getProperty('METAS_API_KEY') || 'INGETES';
+}
+
+function doGet(e) {
+  // e puede ser undefined si lo ejecutas desde "▶ Ejecutar"
+  const year = Number((e && e.parameter && e.parameter.year) || new Date().getFullYear());
+
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  const rows = sh.getDataRange().getValues();
+  rows.shift(); // quita encabezado
+
+  const metas = rows
+    .filter(r => Number(r[0]) === year)
+    .map(r => ({
+      year: Number(r[0]),
+      comercial: String(r[1]),
+      metaAnual: toNum(r[2]),
+      metaOfertas: toNum(r[3]),
+      metaVisitas: toNum(r[4]),
+    }));
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ year, metas }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({ ok:false, error:'bad request' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    const body = JSON.parse(e.postData.contents);
+
+    const storedKey = getApiKey();
+    if (!storedKey || body.apiKey !== storedKey) {
+      return ContentService.createTextOutput(JSON.stringify({ ok:false, error:'unauthorized' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const { year, metas } = body;
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+    const data = sh.getDataRange().getValues();
+    data.shift(); // header
+
+    const mapIndex = new Map(); // year|comercial -> fila
+    data.forEach((r, i) => mapIndex.set(`${r[0]}|${r[1]}`, i + 2));
+
+    metas.forEach(m => {
+      const key = `${year}|${m.comercial}`;
+      const idx = mapIndex.get(key);
+      if (idx) {
+        sh.getRange(idx, 3).setValue(toNum(m.metaAnual));
+        sh.getRange(idx, 4).setValue(toNum(m.metaOfertas));
+        sh.getRange(idx, 5).setValue(toNum(m.metaVisitas));
+      } else {
+        sh.appendRow([year, m.comercial, toNum(m.metaAnual), toNum(m.metaOfertas), toNum(m.metaVisitas)]);
+      }
+    });
+
+    return ContentService.createTextOutput(JSON.stringify({ ok:true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ ok:false, error:String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}  
 
 function getMeta(comercial: string, tipo: "anual" | "ofertas" | "visitas"): number {
   const r = settingsRows.find(x => x.comercial === comercial);
