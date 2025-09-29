@@ -493,7 +493,6 @@ export async function parseOffersFromDetailSheet(
   for (const r of json) {
     if (isNoiseRow(r)) continue;
 
-    // columnas
     const comercialRaw =
       pickCol(r, ["Comercial", "Vendedor", "Propietario", "Dueño"]) ?? "";
     const fechaRaw =
@@ -506,7 +505,6 @@ export async function parseOffersFromDetailSheet(
     const cuentaRaw =
       pickCol(r, ["Cuenta", "Cliente"]) ?? undefined;
 
-    // arrastre de comercial
     const comercialTxt = String(comercialRaw || "").trim();
     if (comercialTxt) lastComercial = comercialTxt;
 
@@ -514,7 +512,6 @@ export async function parseOffersFromDetailSheet(
     const valor = toNum(valorRaw);
     const comercial = lastComercial.trim();
 
-    // fila inválida si no hay fecha o no hay comercial (después del arrastre)
     if (!fecha || !comercial) continue;
 
     rows.push({
@@ -527,10 +524,8 @@ export async function parseOffersFromDetailSheet(
     });
   }
 
-  // Filtramos por año-mes seleccionado (YYYY-MM)
   const filtered = rows.filter((r) => ym(r.fechaOferta) === periodoYM);
 
-  // Ranking por comercial (cuenta de ofertas del periodo)
   const counts = new Map<string, number>();
   for (const r of filtered) {
     counts.set(r.comercial, (counts.get(r.comercial) || 0) + 1);
@@ -1166,8 +1161,8 @@ async function onDetailFile(f: File) {
     const detailModel = tryParseAnyDetail(wb);
     setDetail({ debug: [], ...detailModel }); // asegura detail.debug = []
 
-    const off = buildOffersModelFromDetail(wb);
-    setOffersModel(off);
+const off = await parseOffersFromDetailSheet(await f.arrayBuffer(), periodoYM);
+setOffersModel(off);
     if (off.periods?.length) setOffersPeriod(off.periods.at(-1)!);
   } catch (e:any) {
     setDetail(null); setOffersModel(null); setOffersPeriod("");
