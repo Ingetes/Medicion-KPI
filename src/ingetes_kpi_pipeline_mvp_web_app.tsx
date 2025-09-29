@@ -914,19 +914,20 @@ function calcSalesCycleAllOffers(detailModel: any) {
   const all = detailModel?.allRows || [];
   const by = new Map<string, { sumMs: number; n: number }>();
 
-  for (const r of all) {
-    const created = r.created;
-    if (!created) continue; // sin fecha de creación no se puede calcular
+for (const r of all) {
+  const created = r.created;
+  if (!created) continue;
 
-    const end = r.closed ?? todayUTC; // cerrada: cierre; abierta: hoy
-let deltaMs = r.closed.getTime() - r.created.getTime();
-if (!isFinite(deltaMs) || deltaMs > 3650 * MS) continue;
-if (deltaMs < 0) deltaMs = 0;
+  const end = r.closed ?? todayUTC; // cerrada: cierre; abierta: hoy
 
-    const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
-    acc.sumMs += deltaMs; acc.n += 1;
-    by.set(r.comercial, acc);
-  }
+  let deltaMs = end.getTime() - created.getTime();
+  if (!isFinite(deltaMs) || deltaMs > 3650 * MS) continue;
+  if (deltaMs < 0) deltaMs = 0;
+
+  const acc = by.get(r.comercial) || { sumMs: 0, n: 0 };
+  acc.sumMs += deltaMs; acc.n += 1;
+  by.set(r.comercial, acc);
+}
 
   const porComercial = Array.from(by.entries())
     .map(([comercial, v]) => ({
@@ -986,34 +987,40 @@ const [loadingSettings, setLoadingSettings] = useState(false);
 const [savingSettings, setSavingSettings] = useState(false);
 
 // Utilidad: sacar lista de comerciales detectados (de los archivos cargados)
-// Ajusta los nombres si tus modelos se llaman distinto.
 function getAllComerciales(): string[] {
   const set = new Set<string>();
 
-  // Si tienes un modelo del RESUMEN (pipeline/ganadas), agrégalo aquí:
-  if (summary?.allRows) {
-    summary.allRows.forEach((r: any) => {
+  // RESUMEN (pivot)
+  if (pivot?.rows) {
+    pivot.rows.forEach((r: any) => {
       const c = String(r.comercial || r.Comercial || "").trim();
       if (c) set.add(c);
     });
   }
-  // Si tienes modelo del DETALLADO:
+
+  // DETALLADO – ofertas / ciclo
+  if (offersModel?.rows) {
+    offersModel.rows.forEach((r: any) => {
+      const c = String(r.comercial || r.Comercial || "").trim();
+      if (c) set.add(c);
+    });
+  }
   if (detail?.allRows) {
     detail.allRows.forEach((r: any) => {
       const c = String(r.comercial || r.Comercial || "").trim();
       if (c) set.add(c);
     });
   }
-  // Si tienes modelo de VISITAS:
-  if (visits?.allRows) {
-    visits.allRows.forEach((r: any) => {
+
+  // VISITAS
+  if (visitsModel?.rows) {
+    visitsModel.rows.forEach((r: any) => {
       const c = String(r.comercial || r.Comercial || "").trim();
       if (c) set.add(c);
     });
   }
 
-  // Si no hay archivos, deja vacío (o pon tu lista fija)
-  return Array.from(set);
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
 // Abre el panel: lee metas del año y mergea con los comerciales detectados
