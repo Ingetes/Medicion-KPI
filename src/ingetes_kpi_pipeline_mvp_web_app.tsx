@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
+// ====== Metas (Sheets) ======
 type MetaRecord = {
   comercial: string;
   metaAnual: number;
@@ -9,21 +10,24 @@ type MetaRecord = {
 };
 type MetasResponse = { year: number; metas: MetaRecord[] };
 
-const METAS_API_URL = 'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec';
-const METAS_API_KEY = 'INGETES';
-
-function getMeta(comercial: string, tipo: "anual" | "ofertas" | "visitas"): number {
-  const r = settingsRows.find(x => x.comercial === comercial);
-  if (!r) return 0;
-  if (tipo === "anual") return r.metaAnual;
-  if (tipo === "ofertas") return r.metaOfertas;
-  return r.metaVisitas;
-}
+const METAS_API_URL =
+  "https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec";
+const METAS_API_KEY = "INGETES";
 
 async function fetchMetas(year: number): Promise<MetasResponse> {
   const res = await fetch(`${METAS_API_URL}?year=${year}`);
-  if (!res.ok) throw new Error('No se pudieron leer las metas');
+  if (!res.ok) throw new Error("No se pudieron leer las metas");
   return res.json();
+}
+
+async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
+  const res = await fetch(METAS_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || "Error guardando metas");
 }
 
 // ========================= Utils =========================
@@ -372,116 +376,159 @@ function buildVisitsModelFromWorkbook(wb: XLSX.WorkBook) {
   }
   throw new Error("VISITAS: no pude interpretar ninguna hoja. "+errs.join(" | "));
 }
-function parseOffersFromDetailSheet(ws: XLSX.WorkSheet, sheetName: string) {
-  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-  if (!A.length) throw new Error("DETALLADO (Ofertas): hoja vacía");
 
-  // --- helpers ---
+// ================== DETALLADO → OFERTAS ==================
+import * as XLSX from "xlsx";
 
-async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
-  const res = await fetch(METAS_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'Error guardando metas');
-}
+type OfferRow = {
+  comercial: string;
+  fechaOferta: Date;
+  etapa?: string;
+  valor?: number;
+  cuenta?: string;
+  raw?: any;
+};
 
-  const n = (s: any) =>
-    String(s ?? "")
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "") // tildes
-      .replace(/[()↑%]/g, " ")         // símbolos del reporte
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const scoreHead = (row: any[]) => {
-    const H = row.map(n);
-    let sc = 0;
-    if (H.some(h => h.includes("propietario") || h.includes("comercial") || h.includes("owner") || h.includes("vendedor"))) sc++;
-    if (H.some(h => h.includes("fecha"))) sc++;
-    if (H.some(h => h.includes("oportunidad") || h.includes("nombre"))) sc++;
-    if (H.some(h => h.includes("valor") || h.includes("monto") || h.includes("importe") || h.includes("precio") || h.includes("amount"))) sc++;
-    return sc;
-  };
-
-  // localizar fila de encabezados
-  let headerRow = 0, best = -1;
-  for (let r = 0; r < Math.min(40, A.length); r++) {
-    const sc = scoreHead(A[r] || []);
-    if (sc > best) { best = sc; headerRow = r; }
-  }
-
-  const headers = A[headerRow] || [];
-  const findIdx = (...cands: string[]) => {
-    const nc = cands.map(n);
-    for (let c = 0; c < headers.length; c++) {
-      const h = n(headers[c]);
-      if (nc.some(k => h.includes(k))) return c;
-    }
-    return -1;
-  };
-
-  const idxCom = findIdx("propietario de oportunidad", "comercial", "propietario", "owner", "vendedor");
-  const idxFec = findIdx(
-    "fecha de oferta", "fecha oferta", "fecha de envio", "fecha envio", "fecha propuesta",
-    "fecha de creacion", "fecha creacion", "fecha de creación", "fecha creación",
-    "created", "close date", "fecha"
+/**
+ * Busca el nombre estandarizado de una columna por varias variantes posibles.
+ */
+function pickCol(obj: any, variants: string[]): any {
+  if (!obj) return undefined;
+  const keys = Object.keys(obj);
+  const found = keys.find((k) =>
+    variants.some((v) => k.trim().toLowerCase() === v.trim().toLowerCase())
   );
-  const idxNom = findIdx("nombre de la oportunidad", "oportunidad", "nombre", "asunto", "subject");
-  const idxVal = findIdx("valor", "monto", "importe", "amount", "precio total", "total");
-
-  if (idxCom < 0 || idxFec < 0) {
-    throw new Error(`DETALLADO (Ofertas): faltan columnas mínimas (Comercial y Fecha) en hoja ${sheetName}`);
-  }
-
-  const rows: any[] = [];
-  let currentComercial = ""; // ← aquí se arrastra el comercial del bloque
-
-  for (let r = headerRow + 1; r < A.length; r++) {
-    const row = A[r] || [];
-    if (row.every((v: any) => String(v).trim() === "")) continue;
-
-    // saltar filas de subtotal/total/recuento/suma propias del reporte
-    const line = n((row.join(" ")) || "");
-    if (
-      line.startsWith("subtotal") || line.startsWith("total") ||
-      line.includes("recuento") || line.includes("suma de")
-    ) continue;
-
-    // si trae comercial explícito en esta fila, actualizar el "current"
-const rawCom = row[idxCom];
-if (rawCom != null && String(rawCom).trim() !== "") {
-  const mapped = mapComercial(rawCom);
-  if (mapped && mapped !== "(Sin comercial)") {
-    currentComercial = mapped;
-  }
+  return found ? obj[found] : undefined;
 }
 
-// usar el arrastrado; si aún no hay, no cuentes la fila (sigue siendo cabecera/total)
-const comercial = currentComercial;
-if (!comercial || comercial === "(Sin comercial)") continue;
+/**
+ * Convierte a número tolerante a separadores de miles/comas.
+ */
+function toNum(v: any): number | undefined {
+  if (v == null || v === "") return undefined;
+  if (typeof v === "number") return v;
+  const s = String(v).replace(/[^\d,.-]/g, "");
+  if (s.includes(",") && !s.includes(".")) {
+    // formato 1.234.567,89 -> pasa coma a punto si no hay punto decimal
+    return Number(s.replace(/,/g, ".").replace(/\.(?=.*\.)/g, ""));
+  }
+  // quita puntos de miles (dejar solo el decimal final)
+  const parts = s.split(".");
+  if (parts.length > 2) return Number(parts.join(""));
+  const n = Number(s);
+  return isFinite(n) ? n : undefined;
+}
 
+/**
+ * Normaliza fecha desde Excel (número serial), string o Date.
+ */
+function toDate(v: any): Date | undefined {
+  if (!v && v !== 0) return undefined;
+  if (v instanceof Date) return v;
+  if (typeof v === "number") {
+    // Excel serial date
+    const d = XLSX.SSF ? XLSX.SSF.parse_date_code(v) : null;
+    if (d) return new Date(Date.UTC(d.y, d.m - 1, d.d));
+    // fallback: días desde 1899-12-30
+    const epoch = new Date(Date.UTC(1899, 11, 30)).getTime();
+    return new Date(epoch + v * 24 * 60 * 60 * 1000);
+  }
+  // intenta parsear string DD/MM/YYYY o YYYY-MM-DD
+  const s = String(v).trim();
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m1) {
+    const d = Number(m1[1]);
+    const mo = Number(m1[2]) - 1;
+    const y = Number(m1[3].length === 2 ? "20" + m1[3] : m1[3]);
+    return new Date(Date.UTC(y, mo, d));
+  }
+  const dt = new Date(s);
+  return isNaN(dt.getTime()) ? undefined : dt;
+}
 
-    // fecha robusta (dd/mm/yyyy, serial de Excel, ISO, etc.)
-    const fecha = parseDateCell(row[idxFec]);
-    if (!fecha) continue;
+/**
+ * Determina si una fila es noise (subtotales, recuentos, etc.)
+ */
+function isNoiseRow(obj: any): boolean {
+  const txt = Object.values(obj)
+    .filter((x) => typeof x === "string")
+    .join(" ")
+    .toLowerCase();
+  return (
+    txt.includes("subtotal") ||
+    txt.includes("recuento") ||
+    txt.includes("total") && !txt.includes("precio")
+  );
+}
 
-    // periodo UTC (evita deslizar de mes por zona horaria)
-    const d = new Date(fecha);
-    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+/**
+ * Convierte una fecha a "YYYY-MM" para filtrar por periodo.
+ */
+function ym(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
-    const nombre = idxNom >= 0 ? String(row[idxNom] ?? "").trim() : "";
-    const valor = idxVal >= 0 ? Number(row[idxVal] ?? 0) : 0;
+export async function parseOffersFromDetailSheet(
+  file: ArrayBuffer,
+  periodoYM: string
+): Promise<{ rows: OfferRow[]; ranking: { comercial: string; count: number }[] }> {
+  const wb = XLSX.read(file, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-    rows.push({ comercial, fecha: d, ym, nombre, valor });
+  const rows: OfferRow[] = [];
+  let lastComercial = "";
+
+  for (const r of json) {
+    if (isNoiseRow(r)) continue;
+
+    // columnas
+    const comercialRaw =
+      pickCol(r, ["Comercial", "Vendedor", "Propietario", "Dueño"]) ?? "";
+    const fechaRaw =
+      pickCol(r, ["Fecha de oferta", "Fecha oferta", "Fecha", "Fecha creación", "Fecha de creación"]) ??
+      pickCol(r, ["Fecha Oportunidad", "Oportunidad fecha"]) ?? "";
+    const etapaRaw =
+      pickCol(r, ["Etapa", "Stage", "Estado"]) ?? undefined;
+    const valorRaw =
+      pickCol(r, ["Valor de la oferta", "Importe", "Precio total", "Monto"]) ?? undefined;
+    const cuentaRaw =
+      pickCol(r, ["Cuenta", "Cliente"]) ?? undefined;
+
+    // arrastre de comercial
+    const comercialTxt = String(comercialRaw || "").trim();
+    if (comercialTxt) lastComercial = comercialTxt;
+
+    const fecha = toDate(fechaRaw);
+    const valor = toNum(valorRaw);
+    const comercial = lastComercial.trim();
+
+    // fila inválida si no hay fecha o no hay comercial (después del arrastre)
+    if (!fecha || !comercial) continue;
+
+    rows.push({
+      comercial,
+      fechaOferta: fecha,
+      etapa: etapaRaw ? String(etapaRaw).trim() : undefined,
+      valor,
+      cuenta: cuentaRaw ? String(cuentaRaw).trim() : undefined,
+      raw: r,
+    });
   }
 
-  if (!rows.length) throw new Error(`DETALLADO (Ofertas): sin filas válidas en ${sheetName}`);
-  const periods = Array.from(new Set(rows.map(r => r.ym))).sort(); // solo meses (nada de "ALL")
-  return { rows, sheetName, periods };
+  // Filtramos por año-mes seleccionado (YYYY-MM)
+  const filtered = rows.filter((r) => ym(r.fechaOferta) === periodoYM);
+
+  // Ranking por comercial (cuenta de ofertas del periodo)
+  const counts = new Map<string, number>();
+  for (const r of filtered) {
+    counts.set(r.comercial, (counts.get(r.comercial) || 0) + 1);
+  }
+  const ranking = Array.from(counts.entries())
+    .map(([comercial, count]) => ({ comercial, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return { rows, ranking };
 }
 
 function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
