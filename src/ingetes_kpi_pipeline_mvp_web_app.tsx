@@ -1151,27 +1151,32 @@ const resetAll = () => {
   const colorForWinRate = (valuePct: number) => valuePct >= winRateTarget ? "bg-green-500" : (valuePct >= winRateTarget * 0.8 ? "bg-yellow-400" : "bg-red-500");
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
 
-async function onDetailFile(file: File) {
+async function onDetailFile(f: File) {
+  setError("");
+  setInfo(prev => (prev ? prev + "\n" : ""));
+  setFileDetailName(f.name);
+
   try {
-    // 1) toma el periodo seleccionado (si ya guardas algo como state.ui.periodoYM, úsalo);
-    //    si no, usa el actual:
-    const periodoYM =
-      state.ui?.periodo /* por ejemplo '2025-09' */ ||
-      state.ui?.periodoYM /* si tu estado ya guarda eso */ ||
-      ym(new Date());
+    // 1) Leer el Excel de forma robusta
+    const wb = await readWorkbookRobust(f);
 
-    // 2) parsea el Excel DETALLADO con ese periodo
-    const off = await parseOffersFromDetailSheet(
-      await file.arrayBuffer(),
-      periodoYM
-    );
+    // 2) Parsear DETALLADO (crea filas con comercial, created, closed, stage)
+    const dm = tryParseAnyDetail(wb);
+    setDetail(dm);
 
-    // 3) guarda el modelo (ajusta a tus setters reales)
-    setOffersModel(off);
-    // opcional: setDetail({ ...off, periodoYM });
+    // 3) Construir modelo de OFERTAS (comercial + periodo YM)
+    const om = buildOffersModelFromDetailModel(dm);
+    setOffersModel(om);
+    if (om.periods && om.periods.length) {
+      setOffersPeriod(om.periods[om.periods.length - 1]); // último mes
+    }
 
-  } catch (err: any) {
-    toast(`Detalle: ${err?.message || err}`);
+    // 4) Mensaje informativo
+    setInfo(prev => (prev + `Detalle OK • hoja: ${dm.sheetName}`).trim());
+  } catch (e: any) {
+    setDetail(null);
+    setOffersModel(null);
+    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}`);
   }
 }
 
