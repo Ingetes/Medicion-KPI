@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 
 // ====== Metas (Sheets) ======
+
 type MetaRecord = {
   comercial: string;
   metaAnual: number;
@@ -10,36 +11,97 @@ type MetaRecord = {
 };
 type MetasResponse = { year: number; metas: MetaRecord[] };
 
-const METAS_API_URL =
-  "https://script.google.com/macros/s/AKfycbwjPQjJ1OZmH6YNrIVAtM8xLHcNfYxAv668PdoB5Bab/dev";
-const METAS_API_KEY = "INGETES";
+// === Metas por comercial (Google Apps Script) ===
+// GET público (el que te abre el JSON en el navegador)
+const METAS_GET_URL =
+  'https://script.google.com/macros/library/d/1TERuhswfmY1jDtQ8aQR0KdPxiwl8hRCPW5KuPfuVChjsfFhjY4_GJDMm/1'; // <-- pega aquí tu URL "echo" completa
 
-async function fetchMetas(year: number): Promise<MetasResponse> {
-  const res = await fetch(`${METAS_API_URL}?year=${year}`);
-  if (!res.ok) throw new Error("No se pudieron leer las metas");
-  return res.json();
+// POST (deployment /exec público) para guardar cambios
+const METAS_POST_URL =
+  'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec'; // <-- pega tu URL /exec
+
+// Debe coincidir con la clave del Apps Script (getApiKey → 'INGETES' por defecto)
+const METAS_API_KEY = 'INGETES';
+
+// Normaliza nombres para que coincidan con los de los archivos
+function normName(s: string) {
+  return String(s || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
 }
 
-async function saveMetas(year: number, metas: MetaRecord[]): Promise<void> {
-  const res = await fetch(METAS_API_URL, {
-    method: "POST",
-    // 👇 Evita preflight CORS
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
-    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
-  });
-
-  // Si Apps Script devuelve 200, leemos el JSON
-  let json: any = null;
+async function fetchMetas(year: number) {
   try {
-    json = await res.json();
-  } catch {
-    // Si por alguna razón no hay JSON, lo tratamos como error
-    throw new Error("Respuesta inválida del servidor");
+    const res = await fetch(`${METAS_GET_URL}&year=${year}`);
+    const data = await res.json();
+    setMetas(data.metas || []);
+  } catch (err) {
+    console.error("Error cargando metas:", err);
   }
+}
 
-  if (!json.ok) {
-    throw new Error(json.error || "Error guardando metas");
+async function fetchMetasFromSheet(year: number) {
+  const url = `${METAS_GET_URL}${METAS_GET_URL.includes('?') ? '&' : '?'}year=${year}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`GET metas ${res.status}`);
+  const data = await res.json();
+
+  // Siempre devuelve array
+  const metas: Array<{
+    year: number;
+    comercial: string;
+    metaAnual: number | null;
+    metaOfertas: number | null;
+    metaVisitas: number | null;
+  }> = Array.isArray(data?.metas) ? data.metas : [];
+
+  // Normaliza y fuerza números (0 si viene null o string)
+  return metas.map(m => ({
+    year: Number(m.year),
+    comercial: normName(m.comercial),
+    metaAnual: Number(m.metaAnual ?? 0),
+    metaOfertas: Number(m.metaOfertas ?? 0),
+    metaVisitas: Number(m.metaVisitas ?? 0),
+  }));
+}
+
+async function saveMetas(year: number, metas: any[]) {
+  try {
+    const res = await fetch(METAS_POST_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    alert("Metas guardadas correctamente ✅");
+  } catch (err) {
+    alert("Error guardando metas: " + err);
   }
+}
+
+async function saveMetasToSheet(year: number, filas: Array<{ comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number }>) {
+  const res = await fetch(METAS_POST_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey: METAS_API_KEY,
+      year,
+      metas: filas.map(f => ({
+        comercial: f.comercial,
+        metaAnual: Number(f.metaAnual || 0),
+        metaOfertas: Number(f.metaOfertas || 0),
+        metaVisitas: Number(f.metaVisitas || 0),
+      })),
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`POST metas ${res.status}: ${txt}`);
+  }
+  const out = await res.json();
+  if (!out?.ok) throw new Error(out?.error || 'unknown error');
 }
 
 // ========================= Utils =========================
