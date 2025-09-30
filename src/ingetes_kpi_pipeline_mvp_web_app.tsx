@@ -472,11 +472,9 @@ function isNoiseRow(obj: any): boolean {
   );
 }
 
-/**
- * Convierte una fecha a "YYYY-MM" para filtrar por periodo.
- */
+// helper: YYYY-MM a partir de un Date
 function ym(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export async function parseOffersFromDetailSheet(
@@ -1153,20 +1151,27 @@ const resetAll = () => {
   const colorForWinRate = (valuePct: number) => valuePct >= winRateTarget ? "bg-green-500" : (valuePct >= winRateTarget * 0.8 ? "bg-yellow-400" : "bg-red-500");
   const colorForCycle = (days: number) => days <= cycleTarget ? "bg-green-500" : (days <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500");
 
-async function onDetailFile(f: File) {
-  setError(""); setFileDetailName(f.name);
+async function onDetailFile(file: File) {
   try {
-    const wb = await readWorkbookRobust(f);
+    // 1) toma el periodo seleccionado (si ya guardas algo como state.ui.periodoYM, úsalo);
+    //    si no, usa el actual:
+    const periodoYM =
+      state.ui?.periodo /* por ejemplo '2025-09' */ ||
+      state.ui?.periodoYM /* si tu estado ya guarda eso */ ||
+      ym(new Date());
 
-    const detailModel = tryParseAnyDetail(wb);
-    setDetail({ debug: [], ...detailModel }); // asegura detail.debug = []
+    // 2) parsea el Excel DETALLADO con ese periodo
+    const off = await parseOffersFromDetailSheet(
+      await file.arrayBuffer(),
+      periodoYM
+    );
 
-const off = await parseOffersFromDetailSheet(await f.arrayBuffer(), periodoYM);
-setOffersModel(off);
-    if (off.periods?.length) setOffersPeriod(off.periods.at(-1)!);
-  } catch (e:any) {
-    setDetail(null); setOffersModel(null); setOffersPeriod("");
-    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}`);
+    // 3) guarda el modelo (ajusta a tus setters reales)
+    setOffersModel(off);
+    // opcional: setDetail({ ...off, periodoYM });
+
+  } catch (err: any) {
+    toast(`Detalle: ${err?.message || err}`);
   }
 }
 
