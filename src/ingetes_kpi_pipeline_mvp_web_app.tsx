@@ -33,11 +33,6 @@ function normName(s: string) {
 
 type MetasResponse = { year: number; metas: MetaRecord[] };
 
-// Normaliza nombres (misma función que ya tienes)
-function normName(s: string) {
-  return String(s || "").trim().replace(/\s+/g, " ").toUpperCase();
-}
-
 async function fetchMetas(year: number): Promise<MetasResponse> {
   // añade ?year= o &year= según corresponda
   const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
