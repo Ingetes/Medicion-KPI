@@ -14,11 +14,10 @@ type MetasResponse = { year: number; metas: MetaRecord[] };
 // === Metas por comercial (Google Apps Script) ===
 // GET público (el que te abre el JSON en el navegador)
 const METAS_GET_URL =
-  'https://script.google.com/macros/library/d/1TERuhswfmY1jDtQ8aQR0KdPxiwl8hRCPW5KuPfuVChjsfFhjY4_GJDMm/1'; // <-- pega aquí tu URL "echo" completa
+  'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec'; // <-- pega tu URL /exec
 
 // POST (deployment /exec público) para guardar cambios
-const METAS_POST_URL =
-  'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec'; // <-- pega tu URL /exec
+const METAS_POST_URL = METAS_GET_URL; // usamos la misma
 
 // Debe coincidir con la clave del Apps Script (getApiKey → 'INGETES' por defecto)
 const METAS_API_KEY = 'INGETES';
@@ -611,6 +610,31 @@ export async function parseOffersFromDetailSheet(
   return { rows, ranking };
 }
 
+async function loadMetasFromSheet(year: number) {
+  const url = `${METAS_GET_URL}?year=${encodeURIComponent(year)}`;
+  const r = await fetch(url, { method: 'GET' });
+  if (!r.ok) throw new Error(`GET metas: ${r.status}`);
+  const data = await r.json() as {
+    year: number;
+    metas: { comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number }[];
+  };
+  return data.metas ?? [];
+}
+
+async function saveMetasToSheet(year: number, rows: {
+  comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number;
+}[]) {
+  const r = await fetch(METAS_POST_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas: rows }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.ok) {
+    throw new Error(data?.error || `POST metas: ${r.status}`);
+  }
+}
+
 function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
   const errs: string[] = [];
   for (const sn of wb.SheetNames) {
@@ -1122,11 +1146,16 @@ export default function IngetesKPIApp() {
   const [cycleTarget, setCycleTarget] = useState(45);
 
 // ===== Ajustes (metas por comercial) =====
-const [showSettings, setShowSettings] = useState(false);
+const [showMetas, setShowMetas] = useState(false);
 const [settingsYear, setSettingsYear] = useState<number>(new Date().getFullYear());
 const [settingsRows, setSettingsRows] = useState<MetaRecord[]>([]);
 const [loadingSettings, setLoadingSettings] = useState(false);
 const [savingSettings, setSavingSettings] = useState(false);
+const [metasYear, setMetasYear] = useState<number>(new Date().getFullYear());
+const [metasModalRows, setMetasModalRows] = useState<
+  { comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number; }[]
+>([]);
+const [savingMetas, setSavingMetas] = useState(false);
 
 // Utilidad: sacar lista de comerciales detectados (de los archivos cargados)
 function getAllComerciales(): string[] {
