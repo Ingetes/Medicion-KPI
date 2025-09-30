@@ -1145,7 +1145,7 @@ export default function IngetesKPIApp() {
   const [cycleTarget, setCycleTarget] = useState(45);
 
 // ===== Ajustes (metas por comercial) =====
-const [showMetas, setShowMetas] = useState(false);
+const [showSettings, setShowSettings] = useState(false);
 const [settingsYear, setSettingsYear] = useState<number>(new Date().getFullYear());
 const [settingsRows, setSettingsRows] = useState<MetaRecord[]>([]);
 const [loadingSettings, setLoadingSettings] = useState(false);
@@ -1193,51 +1193,63 @@ function getAllComerciales(): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
-// Abre el panel: lee metas del año y mergea con los comerciales detectados
+// Abre el panel: lee metas del año y llena la tabla
 async function openSettings() {
   try {
     setShowSettings(true);
     setLoadingSettings(true);
 
-    const comerciales = getAllComerciales(); // puede venir vacío si aún no cargaron archivos
-    const resp = await fetchMetas(settingsYear);
+    // GET directo al Apps Script (echo), forzando el año
+    const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${settingsYear}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GET metas ${res.status}`);
+    const data = await res.json();
 
-    // Mapa de metas remotas
-    const map = new Map<string, MetaRecord>();
-    resp.metas.forEach(m => map.set(m.comercial, m));
+    const metas = Array.isArray(data?.metas) ? data.metas : [];
 
-    // Construir filas a editar: una por comercial
-    const rows: MetaRecord[] = (comerciales.length ? comerciales : Array.from(map.keys())).map(c => {
-      const rem = map.get(c);
-      return {
-        comercial: c,
-        metaAnual: rem?.metaAnual ?? 0,
-        metaOfertas: rem?.metaOfertas ?? 0,
-        metaVisitas: rem?.metaVisitas ?? 0
-      };
-    });
-
-    // Ordenar alfabético para que sea cómodo
-    rows.sort((a, b) => a.comercial.localeCompare(b.comercial));
+    // Normaliza y fuerza números (0 si viene null o string)
+    const rows = metas.map((m: any) => ({
+      comercial: String(m.comercial || "").trim().toUpperCase(),
+      metaAnual: Number(m.metaAnual ?? 0),
+      metaOfertas: Number(m.metaOfertas ?? 0),
+      metaVisitas: Number(m.metaVisitas ?? 0),
+    }))
+    // orden alfabético
+    .sort((a: any, b: any) => a.comercial.localeCompare(b.comercial));
 
     setSettingsRows(rows);
   } catch (e) {
     console.error(e);
-    setSettingsRows([]);
+    setSettingsRows([]); // deja el mensaje "No hay comerciales…" si falla
   } finally {
     setLoadingSettings(false);
   }
 }
 
-// Guardar en Sheets
+// Guarda en el Sheet vía /exec
 async function saveSettings() {
   try {
     setSavingSettings(true);
-    await saveMetas(settingsYear, settingsRows);
+    const res = await fetch(METAS_POST_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: METAS_API_KEY,
+        year: settingsYear,
+        metas: settingsRows.map(r => ({
+          comercial: r.comercial,
+          metaAnual: Number(r.metaAnual || 0),
+          metaOfertas: Number(r.metaOfertas || 0),
+          metaVisitas: Number(r.metaVisitas || 0),
+        })),
+      }),
+    });
+    const out = await res.json().catch(() => ({} as any));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || `POST metas ${res.status}`);
     alert("Metas guardadas ✅");
     setShowSettings(false);
-  } catch (e:any) {
-    alert("Error guardando metas: " + e.message);
+  } catch (e: any) {
+    alert("Error guardando metas: " + (e?.message || e));
   } finally {
     setSavingSettings(false);
   }
