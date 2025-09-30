@@ -620,20 +620,6 @@ async function loadMetasFromSheet(year: number) {
   return data.metas ?? [];
 }
 
-async function saveMetasToSheet(year: number, rows: {
-  comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number;
-}[]) {
-  const r = await fetch(METAS_POST_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas: rows }),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || !data.ok) {
-    throw new Error(data?.error || `POST metas: ${r.status}`);
-  }
-}
-
 function buildOffersModelFromDetail(wb: XLSX.WorkBook) {
   const errs: string[] = [];
   for (const sn of wb.SheetNames) {
