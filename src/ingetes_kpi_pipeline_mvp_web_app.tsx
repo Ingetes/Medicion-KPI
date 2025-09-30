@@ -31,14 +31,31 @@ function normName(s: string) {
     .toUpperCase();
 }
 
-async function fetchMetas(year: number) {
-  try {
-    const res = await fetch(`${METAS_GET_URL}&year=${year}`);
-    const data = await res.json();
-    setMetas(data.metas || []);
-  } catch (err) {
-    console.error("Error cargando metas:", err);
-  }
+type MetasResponse = { year: number; metas: MetaRecord[] };
+
+// Normaliza nombres (misma función que ya tienes)
+function normName(s: string) {
+  return String(s || "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+async function fetchMetas(year: number): Promise<MetasResponse> {
+  // añade ?year= o &year= según corresponda
+  const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`GET metas ${res.status}`);
+  const data = await res.json();
+
+  const metas = Array.isArray(data?.metas) ? data.metas : [];
+
+  // normaliza y fuerza números
+  const parsed: MetaRecord[] = metas.map((m: any) => ({
+    comercial: normName(m.comercial),
+    metaAnual: Number(m.metaAnual ?? 0),
+    metaOfertas: Number(m.metaOfertas ?? 0),
+    metaVisitas: Number(m.metaVisitas ?? 0),
+  }));
+
+  return { year: Number(data?.year) || year, metas: parsed };
 }
 
 async function fetchMetasFromSheet(year: number) {
@@ -80,6 +97,8 @@ async function saveMetas(year: number, metas: any[]) {
     alert("Error guardando metas: " + err);
   }
 }
+
+
 
 async function saveMetasToSheet(year: number, filas: Array<{ comercial: string; metaAnual: number; metaOfertas: number; metaVisitas: number }>) {
   const res = await fetch(METAS_POST_URL, {
