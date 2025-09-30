@@ -1216,22 +1216,34 @@ async function openSettings() {
 async function saveSettings() {
   try {
     setSavingSettings(true);
+
+    const payload = {
+      apiKey: METAS_API_KEY,       // debe coincidir con getApiKey() del Apps Script
+      year: settingsYear,
+      metas: settingsRows.map(r => ({
+        comercial: r.comercial,
+        metaAnual: Number(r.metaAnual || 0),
+        metaOfertas: Number(r.metaOfertas || 0),
+        metaVisitas: Number(r.metaVisitas || 0),
+      })),
+    };
+
     const res = await fetch(METAS_POST_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        apiKey: METAS_API_KEY,
-        year: settingsYear,
-        metas: settingsRows.map(r => ({
-          comercial: r.comercial,
-          metaAnual: Number(r.metaAnual || 0),
-          metaOfertas: Number(r.metaOfertas || 0),
-          metaVisitas: Number(r.metaVisitas || 0),
-        })),
-      }),
+      // Enviamos como texto para evitar preflight CORS
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
     });
-    const out = await res.json().catch(() => ({} as any));
-    if (!res.ok || !out?.ok) throw new Error(out?.error || `POST metas ${res.status}`);
+
+    // Lee la respuesta (Apps Script devuelve JSON)
+    const outText = await res.text();
+    let out: any = {};
+    try { out = JSON.parse(outText); } catch {}
+
+    if (!res.ok || !out?.ok) {
+      throw new Error(out?.error || `POST metas ${res.status}`);
+    }
+
     alert("Metas guardadas ✅");
     setShowSettings(false);
   } catch (e: any) {
