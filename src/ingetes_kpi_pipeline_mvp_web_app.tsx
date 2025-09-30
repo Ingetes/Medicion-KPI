@@ -13,11 +13,10 @@ type MetasResponse = { year: number; metas: MetaRecord[] };
 
 // === Metas por comercial (Google Apps Script) ===
 // GET público (el que te abre el JSON en el navegador)
-const METAS_GET_URL =
-  'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec'; // <-- pega tu URL /exec
+const METAS_GET_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLgYKi_vgRuH8EXtITmadj95wNjzUtI-IrgFtqVvQQm5Vkh6dNCYhtkyNDakA9TrdZo93Wp7umg0Mv_ifW6MEJxqmHHj36hscjlNFAYHBGCcky4NCy_DdYGL9Sk4h3MIg6dcL2R5t-LQTZnkxZ7vAj4Du1z6_DQz8km5U82Qj6Bj08n4l43iTUJr4omgCgPWI6M8idwJcx52QgULieG8HHqaamcztFr9cbH3PwOF9-BWMfJbDHr2EOESEpsEkZJqvWMdZ6LNIose2TikLaOVIowGZdIqZfMZ_e4hhk_v&lib=M_wwqKoJEkvpNDcscez3XfhqGZ0szE9sQ';
 
 // POST (deployment /exec público) para guardar cambios
-const METAS_POST_URL = METAS_GET_URL; // usamos la misma
+const METAS_POST_URL =   'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203In28UWzsZ3W52XLmDTAxFwbvvAUrzEeQV2y3sM4BaZqmkiKVeC3W6nw/exec'; // <-- pega tu URL /exec
 
 // Debe coincidir con la clave del Apps Script (getApiKey → 'INGETES' por defecto)
 const METAS_API_KEY = 'INGETES';
