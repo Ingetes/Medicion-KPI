@@ -21,6 +21,27 @@ const METAS_POST_URL =   'https://script.google.com/macros/s/AKfycbz2KIvbafZ3203
 // Debe coincidir con la clave del Apps Script (getApiKey → 'INGETES' por defecto)
 const METAS_API_KEY = 'INGETES';
 
+// Usa tu URL /exec vigente
+const METAS_POST_URL = 'https://script.google.com/macros/s/AKfycbz2KlvbafZ3203In28UWz.../exec';
+const METAS_API_KEY  = 'INGETES';
+
+async function guardarMetas(year, metas){
+  const res = await fetch(METAS_POST_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, // o 'text/plain' también sirve
+    body: JSON.stringify({ apiKey: METAS_API_KEY, year, metas })
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'error');
+  return true;
+}
+
+fetch(METAS_POST_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ apiKey: 'INGETES', year, metas })
+})
+
 // Normaliza nombres para que coincidan con los de los archivos
 function normName(s: string) {
   return String(s || '')
