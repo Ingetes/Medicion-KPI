@@ -239,18 +239,6 @@ const fmtCOP = (n: number) => n.toLocaleString("es-CO");
 const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "open", "nuevo", "calificacion", "negociacion", "propuesta"];
 const WON_STAGES = ["closed won", "ganad"]; // detectar 'Closed Won' y variantes en español
 
-// Metas mensuales (COP) -> se convierten a meta anual multiplicando por 12
-const METAS_MENSUALES: Record<string, number> = {
-  "CLAUDIA RODRIGUEZ RODRIGUEZ": 66666000,
-  "HERNAN ROLDAN": 37500000,
-  "JHOAN ORTIZ": 198333000,
-  "JUAN GARZÓN LINARES": 216666000,
-  "KAREN CARRILLO": 91666000,
-  "LIZETH MARTINEZ": 83333000,
-  "PABLO RODRIGUEZ RODRIGUEZ": 200000000,
-};
-const metaAnual = (com: string) => (METAS_MENSUALES[com] || 0) * 12;
-
 // ================= Comerciales: lista fija + mapa =================
 const FIXED_COMERCIALES = [
   "ALL",
@@ -738,14 +726,14 @@ function calcWinRateFromPivot(model: any) {
   return { total: { winRate: totalWinRate, won: tot.won, total: tot.total }, porComercial };
 }
 
-function calcAttainmentFromPivot(model: any) {
+function calcAttainmentFromPivot(model: any, goalFor: (comercial: string) => number) {
   const porComercial = model.rows.map((r: any) => {
     let wonCOP = 0;
     for (const [stage, agg] of Object.entries(r.values)) {
       const st = norm(stage);
       if (st.includes("closed won") || st.includes("ganad")) wonCOP += (agg as any).sum || 0;
     }
-    const goal = metaAnual(r.comercial);
+  const goal = goalFor(r.comercial);
     const pct = goal > 0 ? (wonCOP * 100) / goal : 0;
     return { comercial: r.comercial, wonCOP, goal, pct };
   });
@@ -1153,6 +1141,62 @@ const [metasModalRows, setMetasModalRows] = useState<
 >([]);
 const [savingMetas, setSavingMetas] = useState(false);
 
+// ===== Metas para KPIs (por año desde Sheet) =====
+type MetaRecordForYear = {
+  comercial: string;
+  metaAnual: number;
+  metaOfertas: number;
+  metaVisitas: number;
+};
+const [metasByYear, setMetasByYear] = useState<Record<number, MetaRecordForYear[]>>({});
+const normalizeName = (s: string) =>
+  String(s || "").normalize("NFKC").trim().replace(/\s+/g, " ").toUpperCase();
+
+async function ensureMetasForYear(year: number) {
+  if (!year || metasByYear[year]) return;
+  const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
+  const res = await fetch(url, { cache: "no-store" });
+  const data = await res.json();
+  const metas: MetaRecordForYear[] = (data?.metas || []).map((m: any) => ({
+    comercial: normalizeName(m.comercial),
+    metaAnual: Number(m.metaAnual || 0),
+    metaOfertas: Number(m.metaOfertas || 0),
+    metaVisitas: Number(m.metaVisitas || 0),
+  }));
+  setMetasByYear(prev => ({ ...prev, [year]: metas }));
+}
+
+function metaOfertasFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => m.comercial === normalizeName(comercial));
+  return rec?.metaOfertas ?? 0;
+}
+function metaVisitasFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => m.comercial === normalizeName(comercial));
+  return rec?.metaVisitas ?? 0;
+}
+function metaAnualFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => m.comercial === normalizeName(comercial));
+  return rec?.metaAnual ?? 0;
+}
+
+// Carga metas según los períodos seleccionados
+React.useEffect(() => {
+  const y = Number((offersPeriod || "").slice(0, 4)) || new Date().getFullYear();
+  ensureMetasForYear(y);
+}, [offersPeriod]);
+
+React.useEffect(() => {
+  const y = Number((visitsPeriod || "").slice(0, 4)) || new Date().getFullYear();
+  ensureMetasForYear(y);
+}, [visitsPeriod]);
+
+React.useEffect(() => {
+  ensureMetasForYear(settingsYear);
+}, [settingsYear]);
+
 // Utilidad: sacar lista de comerciales detectados (de los archivos cargados)
 function getAllComerciales(): string[] {
   const set = new Set<string>();
@@ -1508,14 +1552,14 @@ const ScreenOffers = () => {
                 {(data.periods || []).map((p:string)=><option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-            <div className="text-sm text-gray-500">Meta mensual:
-              <input
-                type="number"
-                className="ml-2 w-20 border rounded px-2 py-1 text-sm"
-                value={offersTarget}
-                onChange={(e)=>setOffersTarget(Math.max(0, Number(e.target.value||0)))}
-              />
-            </div>
+<div className="text-sm text-gray-500">
+  Meta mensual (Sheet):{" "}
+  {(() => {
+    const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+    const m = metaOfertasFor(selectedComercial, year);
+    return <b className="tabular-nums">{m}</b>;
+  })()}
+</div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-3 bg-gray-100 rounded">
@@ -1527,7 +1571,24 @@ const ScreenOffers = () => {
               <div className="text-2xl font-bold">{selected}</div>
             </div>
             <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Meta mínima</div>
+<div className="text-xs text-gray-500">Meta mínima</div>
+{(() => {
+  const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+  const target = metaVisitasFor(selectedComercial, year);
+  const st = offerStatus(selectedCount, target);
+  const pct = target > 0 ? Math.round((selectedCount / target) * 100) : (selectedCount > 0 ? 100 : 100);
+  return (
+    <div className="p-3 bg-gray-100 rounded">
+      <div className="text-xs text-gray-500 mb-1">Del comercial seleccionado</div>
+      <div className="flex items-center gap-2">
+        <span className="text-2xl font-bold tabular-nums text-gray-900">
+          {pct}% ({selectedCount}/{target})
+        </span>
+        <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+      </div>
+    </div>
+  );
+})()}
               <div className={`text-2xl font-bold ${selected >= offersTarget ? "text-green-600" : "text-red-600"}`}>
                 {offersTarget}
               </div>
@@ -1543,14 +1604,16 @@ const ScreenOffers = () => {
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
 {data.porComercial.map((row: any, i: number) => {
-  const pctBar = offersTarget > 0
-    ? Math.min(100, Math.round((row.count / offersTarget) * 100))
+  const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+  const target = metaOfertasFor(row.comercial, year);
+  const pctBar = target > 0
+    ? Math.min(100, Math.round((row.count / target) * 100))
     : (row.count > 0 ? 100 : 100);
 
-  // Semáforo del puntico y etiqueta % vs meta (sin decimales)
-  const st = offerStatus(row.count, offersTarget);
-  const pctTarget = offersTarget > 0
-    ? Math.round((row.count / offersTarget) * 100)
+  // Semáforo y etiqueta % vs meta personalizada
+  const st = offerStatus(row.count, target);
+  const pctTarget = target > 0
+    ? Math.round((row.count / target) * 100)
     : (row.count > 0 ? 100 : 100);
   const pctLabel = `${pctTarget}%`;
 
@@ -1563,7 +1626,7 @@ const ScreenOffers = () => {
         {/* DERECHA: números en negro + puntico de color */}
         <div className="flex items-center gap-2">
           <span className="tabular-nums text-gray-900">
-            {pctLabel} ({row.count}/{offersTarget})
+            {pctLabel} ({row.count}/{Target})
           </span>
           <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
         </div>
@@ -1614,14 +1677,14 @@ const ScreenVisits = () => {
                 {(data.periods || []).map((p:string)=><option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-            <div className="text-sm text-gray-500">Meta mensual:
-              <input
-                type="number"
-                className="ml-2 w-20 border rounded px-2 py-1 text-sm"
-                value={visitsTarget}
-                onChange={(e)=>setVisitsTarget(Math.max(0, Number(e.target.value||0)))}
-              />
-            </div>
+<div className="text-sm text-gray-500">
+  Meta mensual (Sheet):{" "}
+  {(() => {
+    const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+    const m = metaVisitasFor(selectedComercial, year);
+    return <b className="tabular-nums">{m}</b>;
+  })()}
+</div>
           </div>
 
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1648,7 +1711,12 @@ const ScreenVisits = () => {
             })()}
 
             <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Meta mínima</div>
+<div className="text-xs text-gray-500">Meta mínima</div>
+{(() => {
+  const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+  const target = metaVisitasFor(selectedComercial, year);
+  return <div className="text-2xl font-bold">{target}</div>;
+})()}
               <div className="text-2xl font-bold">{visitsTarget}</div>
             </div>
           </div>
@@ -1664,23 +1732,25 @@ const ScreenVisits = () => {
             <div className="mb-3 font-semibold">Ranking de visitas por comercial ({data.period})</div>
 
             <div className="space-y-2">
-              {data.porComercial.map((row:any, i:number) => {
-                // barra vs meta: si meta=0 y hay visitas -> 100%; si 0/0 -> 100% (puedes cambiar a 0 si prefieres)
-                const pctBar = visitsTarget > 0
-                  ? Math.min(100, Math.round((row.count / visitsTarget) * 100))
-                  : (row.count > 0 ? 100 : 100);
+{data.porComercial.map((row:any, i:number) => {
+  const year = Number((data.period || "").slice(0, 4)) || new Date().getFullYear();
+  const target = metaVisitasFor(row.comercial, year);
+  // barra vs meta
+  const pctBar = target > 0
+    ? Math.min(100, Math.round((row.count / target) * 100))
+    : (row.count > 0 ? 100 : 100);
 
-                const st = offerStatus(row.count, visitsTarget);
-                const pct = visitsTarget > 0
-                  ? Math.round((row.count / visitsTarget) * 100)
-                  : (row.count > 0 ? 100 : 100);
+  const st = offerStatus(row.count, target);
+  const pct = target > 0
+    ? Math.round((row.count / target) * 100)
+    : (row.count > 0 ? 100 : 100);
 
                 return (
                   <div key={row.comercial} className="text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{i + 1}. {row.comercial}</div>
                       <div className="flex items-center gap-2">
-                        <span className="tabular-nums text-gray-900">{pct}% ({row.count}/{visitsTarget})</span>
+                        <span className="tabular-nums text-gray-900">{pct}% ({row.count}/{Target})</span>
                         <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
                       </div>
                     </div>
@@ -1834,12 +1904,12 @@ const offersKPI = useMemo(() => {
 
 
     const ScreenAttainment = () => {
-    const data = useMemo(() => pivot ? calcAttainmentFromPivot(pivot) : { total:{ pct:0, wonCOP:0, goal:0 }, porComercial:[] }, [pivot]);      
+const data = useMemo(() => pivot ? calcAttainmentFromPivot(pivot, (com)=> metaAnualFor(com, settingsYear)) : { total:{ pct:0, wonCOP:0, goal:0 }, porComercial:[] }, [pivot, settingsYear, metasByYear]);
 const selected = useMemo(() => {
   if (!pivot) return { comercial: "ALL", wonCOP: 0, goal: 0, pct: 0 } as any;
   if (selectedComercial === "ALL") return data.total;
   const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
-  return row || { comercial: selectedComercial, wonCOP: 0, goal: metaAnual(selectedComercial), pct: 0 };
+  return row || { comercial: selectedComercial, wonCOP: 0, goal: metaAnualFor(selectedComercial, settingsYear), pct: 0 };
 }, [pivot, data, selectedComercial]);
     const color = (p: number) => p >= 100 ? "bg-green-500" : (p >= 80 ? "bg-yellow-400" : "bg-red-500");
     const max = useMemo(() => Math.max(data.total.pct, ...(data.porComercial.map((r: any) => r.pct))), [data]);
@@ -1854,7 +1924,7 @@ const selected = useMemo(() => {
               <div className={`w-3 h-3 rounded-full ${color(selected.pct)}`}></div>
               <div className="text-3xl font-bold">{Math.round(selected.pct)}%</div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">Meta anual = meta mensual × 12</div>
+            <div className="text-xs text-gray-500 mt-1">Meta anual (desde Sheet)</div>
             <div className="text-xs text-gray-500">Cerrado (Closed Won): $ {fmtCOP(selected.wonCOP)} / Meta: $ {fmtCOP(selected.goal)}</div>
           </section>
 
