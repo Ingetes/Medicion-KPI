@@ -1106,8 +1106,6 @@ export default function IngetesKPIApp() {
   const [cycleMode, setCycleMode] = useState<"all" | "won" | "offers">("all");
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
-  const [visitsTarget, setVisitsTarget] = useState<number>(20)
-  const [offersTarget, setOffersTarget] = useState<number>(20);
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -1298,7 +1296,7 @@ const resetAll = () => {
   setFileDetailName(""); setDetail(null); setOffersModel(null); setOffersPeriod("");
   setFileVisitsName(""); setVisitsModel(null); setVisitsPeriod("");
   setSelectedComercial("ALL");
-  setWinRateTarget(30); setCycleTarget(45); setVisitsTarget(10);
+  setWinRateTarget(30); setCycleTarget(45);
   setError(""); setInfo("");
 };
 
@@ -1611,9 +1609,8 @@ const ScreenOffers = () => {
               })()}
             </div>
           </div>
-
           <div className="text-xs text-gray-500 mt-2">
-            Fuente: Archivo DETALLADO (una fila = una oferta). Requiere columnas: <em>Comercial</em> y <em>Fecha de oferta</em>.
+            Fuente: Archivo VISITAS (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de visita</em>.
           </div>
         </section>
 
