@@ -1466,7 +1466,10 @@ const cycleData = useMemo(() => {
     const selected = useMemo(() => {
       if (!pivot) return 0; if (selectedComercial === "ALL") return data.total.winRate; return data.porComercial.find(r => r.comercial === selectedComercial)?.winRate || 0;
     }, [pivot, data, selectedComercial]);
-    const max = useMemo(() => Math.max(data.total.winRate, ...(onlySelected(data.porComercial, selectedComercial).map((row: any) => r.winRate))), [data]);
+    const max = useMemo(() => {
+  const arr = onlySelected(data.porComercial, selectedComercial);
+  return Math.max(data.total.winRate || 0, ...(arr.map((row: any) => row.winRate || 0)));
+}, [data, selectedComercial]);
     const color = (v: number)=> v>=winRateTarget?"bg-green-500":(v>=winRateTarget*0.8?"bg-yellow-400":"bg-red-500");
     return (
       <div className="min-h-screen bg-gray-50">
@@ -1493,7 +1496,7 @@ const cycleData = useMemo(() => {
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Win Rate por comercial</div>
               <div className="space-y-2">
-                {data.porComercial.map((row: any) => {
+                {onlySelected(data.porComercial, selectedComercial).map((row: any) => {
                   const pct = Math.round((row.winRate / (max || 1)) * 100);
                   return (
                     <div key={row.comercial} className="text-sm">
@@ -1518,12 +1521,12 @@ const ScreenOffers = () => {
   const data = offersKPI;
 
   // Ofertas del comercial seleccionado en el período activo
-  const selected = useMemo(() => {
-    if (!offersModel) return 0;
-    if (selectedComercial === "ALL") return data.total;
-    const row = onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => r.comercial === selectedComercial);
-    return row ? row.count : 0;
-  }, [offersModel, data, selectedComercial]);
+const selected = useMemo(() => {
+  if (!offersModel) return 0;
+  if (selectedComercial === "ALL") return data.total;
+  const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+  return row ? row.count : 0;
+}, [offersModel, data, selectedComercial]);
 
   // Año del período (formato YYYY-MM)
   const yearForOffers = useMemo(
@@ -1587,7 +1590,9 @@ const ScreenOffers = () => {
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-3 bg-gray-100 rounded">
               <div className="text-xs text-gray-500">Ofertas del período</div>
-              <div className="text-2xl font-bold">{data.total}</div>
+<div className="text-2xl font-bold">
+  {selectedComercial === "ALL" ? data.total : selected}
+</div>
             </div>
 
             <div className="p-3 bg-gray-100 rounded">
@@ -1623,7 +1628,7 @@ const ScreenOffers = () => {
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
             <div className="space-y-2">
-              {data.porComercial.map((row: any, i: number) => {
+              {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
                 const target = metasMap.get(normName(row.comercial))?.metaOfertas ?? 0;
                 const pct = target > 0
                   ? Math.round((row.count / target) * 100)
@@ -1661,12 +1666,13 @@ const ScreenVisits = () => {
   const data = visitsKPI;
 
   // Visitas del comercial seleccionado en el período activo
-  const selectedCount = React.useMemo(() => {
-    if (!visitsModel) return 0;
-    if (selectedComercial === "ALL") return data.total;
-    const row = onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => r.comercial === selectedComercial);
-    return row ? row.count : 0;
-  }, [visitsModel, data, selectedComercial]);
+const selectedCount = React.useMemo(() => {
+  if (!visitsModel) return 0;
+  if (selectedComercial === "ALL") return data.total;
+  const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+  return row ? row.count : 0;
+}, [visitsModel, data, selectedComercial]);
+
 
   // Año del período (formato YYYY-MM)
   const yearForVisits = React.useMemo(
@@ -1731,8 +1737,9 @@ const ScreenVisits = () => {
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-3 bg-gray-100 rounded">
               <div className="text-xs text-gray-500">Visitas del período</div>
-              <div className="text-2xl font-bold">{data.total}</div>
-            </div>
+<div className="text-2xl font-bold">
+  {selectedComercial === "ALL" ? data.total : selectedCount}
+</div>            </div>
 
             <div className="p-3 bg-gray-100 rounded">
               <div className="text-xs text-gray-500">Del comercial seleccionado</div>
@@ -1768,7 +1775,7 @@ const ScreenVisits = () => {
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">Ranking de visitas por comercial ({data.period})</div>
             <div className="space-y-2">
-              {data.porComercial.map((row: any, i: number) => {
+              {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
                 const target = metasMap.get(normName(row.comercial))?.metaVisitas ?? 0;
                 const pct = target > 0
                   ? Math.round((row.count / target) * 100)
