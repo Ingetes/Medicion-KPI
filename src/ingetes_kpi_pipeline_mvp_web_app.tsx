@@ -202,6 +202,11 @@ function offerStatus(count: number, target: number) {
   return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };
 }
 
+// --- Helper: filtra filas por comercial seleccionado ---
+function onlySelected<T extends { comercial: string }>(arr: T[], selected: string): T[] {
+  return selected === "ALL" ? arr : arr.filter(r => r.comercial === selected);
+}
+
 const parseDateCell = (val: any) => {
   if (val == null || val === "") return null;
   // Excel serial
@@ -1434,7 +1439,7 @@ const cycleData = useMemo(() => {
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Pipeline por comercial</div>
               <div className="space-y-2">
-              {data.porComercial.map((row: any) => {
+              {onlySelected(data.porComercial, selectedComercial).map((row: any) => {
                 const pct = Math.round((row.pipeline / (max || 1)) * 100);
                 return (
                   <div key={row.comercial} className="text-sm">
@@ -1461,7 +1466,7 @@ const cycleData = useMemo(() => {
     const selected = useMemo(() => {
       if (!pivot) return 0; if (selectedComercial === "ALL") return data.total.winRate; return data.porComercial.find(r => r.comercial === selectedComercial)?.winRate || 0;
     }, [pivot, data, selectedComercial]);
-    const max = useMemo(() => Math.max(data.total.winRate, ...(data.porComercial.map((r: any) => r.winRate))), [data]);
+    const max = useMemo(() => Math.max(data.total.winRate, ...(onlySelected(data.porComercial, selectedComercial).map((row: any) => r.winRate))), [data]);
     const color = (v: number)=> v>=winRateTarget?"bg-green-500":(v>=winRateTarget*0.8?"bg-yellow-400":"bg-red-500");
     return (
       <div className="min-h-screen bg-gray-50">
@@ -1516,7 +1521,7 @@ const ScreenOffers = () => {
   const selected = useMemo(() => {
     if (!offersModel) return 0;
     if (selectedComercial === "ALL") return data.total;
-    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    const row = onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => r.comercial === selectedComercial);
     return row ? row.count : 0;
   }, [offersModel, data, selectedComercial]);
 
@@ -1659,7 +1664,7 @@ const ScreenVisits = () => {
   const selectedCount = React.useMemo(() => {
     if (!visitsModel) return 0;
     if (selectedComercial === "ALL") return data.total;
-    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    const row = onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => r.comercial === selectedComercial);
     return row ? row.count : 0;
   }, [visitsModel, data, selectedComercial]);
 
@@ -1806,10 +1811,12 @@ const ScreenCycle = () => {
     d <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500";
 
   // Valor grande de la tarjeta superior (siempre promedio de días)
-  const headerValue = useMemo(() => {
-    if (!detail || !cd?.data) return 0;
-    return cd.data.totalAvgDays || 0;
-  }, [detail, cd]);
+const headerValue = useMemo(() => {
+  if (!detail || !cd?.data) return 0;
+  if (selectedComercial === "ALL") return cd.data.totalAvgDays || 0;
+  const row = (cd.data.porComercial || []).find((r: any) => r.comercial === selectedComercial);
+  return row ? (row.avgDays || 0) : 0;
+}, [detail, cd, selectedComercial]);
 
   // Máximo para escalar barras
   const maxBar = useMemo(() => {
@@ -1880,7 +1887,7 @@ const ScreenCycle = () => {
 
             {/* Lista por comercial */}
             <div className="space-y-2">
-              {(cd?.data?.porComercial || []).map((row: any) => {
+              {onlySelected((cd?.data?.porComercial || []), selectedComercial).map((row: any) => {
                 const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
                 return (
                   <div key={row.comercial} className="text-sm">
@@ -2074,7 +2081,7 @@ const ScreenAttainment = () => {
         <section className="p-4 bg-white rounded-xl border">
           <div className="mb-3 font-semibold">Ranking por comercial (cumplimiento vs meta anual del Sheet)</div>
           <div className="space-y-2">
-            {kpi.porComercial.map((row, i) => {
+            {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
               const pct = Math.round(row.pct);
               const pctBar = Math.min(100, pct);
               const st = offerStatus(row.wonCOP, row.goal);
