@@ -202,6 +202,14 @@ function offerStatus(count: number, target: number) {
   return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };
 }
 
+// Tarjeta compacta para los 3 recuadros
+const StatCard = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="p-3 bg-gray-100 rounded">
+    <div className="text-xs text-gray-500">{label}</div>
+    <div className="text-2xl font-bold tabular-nums text-gray-900">{children}</div>
+  </div>
+);
+
 // --- Helper: filtra filas por comercial seleccionado ---
 function onlySelected<T extends { comercial: string }>(arr: T[], selected: string): T[] {
   return selected === "ALL" ? arr : arr.filter(r => r.comercial === selected);
@@ -1430,31 +1438,25 @@ const cycleData = useMemo(() => {
       <div className="min-h-screen bg-gray-50">
         <BackBar title="KPI • Pipeline (COP)" />
         <main className="max-w-6xl mx-auto p-4 space-y-6">
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-            <div className="text-3xl font-bold mt-1">$ {fmtCOP(selected)}</div>
-            <div className="text-xs text-gray-500 mt-1">Etapas: Qualification, Needs Analysis, Proposal, Negotiation</div>
-          </section>
-          {pivot && (
-            <section className="p-4 bg-white rounded-xl border">
-              <div className="mb-3 font-semibold">Pipeline por comercial</div>
-              <div className="space-y-2">
-              {onlySelected(data.porComercial, selectedComercial).map((row: any) => {
-                const pct = Math.round((row.pipeline / (max || 1)) * 100);
-                return (
-                  <div key={row.comercial} className="text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">{row.comercial}</span>
-                      <span>$ {fmtCOP(row.pipeline)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-                    </div>
-                  </div>
-                );
-              })}
-              </div>
-            </section>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+    <div className="text-xs text-gray-500 md:ml-auto">
+      Etapas: Qualification · Needs Analysis · Proposal · Negotiation
+    </div>
+  </div>
+
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <StatCard label="Pipeline (compañía)">$ {fmtCOP(data.total)}</StatCard>
+    <StatCard label="Del comercial seleccionado">$ {fmtCOP(selected)}</StatCard>
+    <StatCard label="Participación del seleccionado">
+      {(() => {
+        const pct = data.total > 0 ? Math.round((selected / data.total) * 100) : 0;
+        return <span>{pct}%</span>;
+      })()}
+    </StatCard>
+  </div>
+</section>
           )}
         </main>
       </div>
@@ -1475,23 +1477,55 @@ const cycleData = useMemo(() => {
       <div className="min-h-screen bg-gray-50">
         <BackBar title="KPI • Tasa de Cierre (Win Rate)" />
         <main className="max-w-6xl mx-auto p-4 space-y-6">
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3">
-              <label className="text-sm text-gray-600">Meta Win Rate (%)</label>
-              <input
-                type="number"
-                className="ml-2 border rounded-lg px-2 py-1 text-sm w-20"
-                value={winRateTarget}
-                onChange={(e) => setWinRateTarget(Number(e.target.value))}
-              />
-            </div>
-            <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-            <div className="mt-2 flex items-end gap-3">
-              <div className={`w-3 h-3 rounded-full ${color(selected)}`}></div>
-              <div className="text-3xl font-bold">{Math.round(selected)}%</div>
-            </div>
-            <div className="text-xs text-gray-500 mt-1">Meta: {winRateTarget}% — Verde ≥ meta · Amarillo ≥ 80% · Rojo &lt; 80%</div>
-          </section>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+
+    <div className="text-sm text-gray-500 md:ml-auto">
+      Meta Win Rate (%):
+      <input
+        type="number"
+        className="ml-2 border rounded-lg px-2 py-1 text-sm w-20"
+        value={winRateTarget}
+        onChange={(e) => setWinRateTarget(Number(e.target.value))}
+      />
+    </div>
+  </div>
+
+  {(() => {
+    const totalWon   = data.total.won;
+    const totalCount = data.total.total;
+    const totalRate  = Math.round(data.total.winRate || 0);
+
+    const rowSel = selectedComercial === "ALL"
+      ? null
+      : data.porComercial.find((r: any) => r.comercial === selectedComercial);
+
+    const selWon   = rowSel?.won   ?? 0;
+    const selCount = rowSel?.total ?? 0;
+    const selRate  = Math.round(selected || 0);
+
+    const cumplPct = winRateTarget > 0 ? Math.round((selRate / winRateTarget) * 100) : (selRate > 0 ? 100 : 0);
+    const st       = color(selRate);
+
+    return (
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard label="Win Rate (compañía)">
+          {totalRate}% ({totalWon}/{totalCount})
+        </StatCard>
+        <StatCard label="Del comercial seleccionado">
+          {selRate}% ({selWon}/{selCount})
+        </StatCard>
+        <StatCard label="Cumplimiento vs meta (%)">
+          <span className="flex items-center gap-2">
+            <span>{cumplPct}%</span>
+            <span className={`inline-block w-3 h-3 rounded-full ${st}`} />
+          </span>
+        </StatCard>
+      </div>
+    );
+  })()}
+</section>
           {pivot && (
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Win Rate por comercial</div>
@@ -1516,7 +1550,7 @@ const cycleData = useMemo(() => {
     );
   };
 
-// === REEMPLAZA TODO EL COMPONENTE POR ESTE ===
+// === ScreenOffers ===
 const ScreenOffers = () => {
   const data = offersKPI;
 
@@ -1564,65 +1598,46 @@ const selected = useMemo(() => {
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Ofertas (desde DETALLADO)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-            <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
 
-            <div className="text-sm text-gray-500">Periodo:
-              <select
-                className="ml-2 border rounded px-2 py-1 text-sm"
-                value={offersPeriod}
-                onChange={(e) => setOffersPeriod(e.target.value)}
-              >
-                {(data.periods || []).map((p: string) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
+    <div className="text-sm text-gray-500">Periodo:
+      <select
+        className="ml-2 border rounded px-2 py-1 text-sm"
+        value={offersPeriod}
+        onChange={(e) => setOffersPeriod(e.target.value)}
+      >
+        {(data.periods || []).map((p: string) => <option key={p} value={p}>{p}</option>)}
+      </select>
+    </div>
 
-            {/* Meta mensual desde Sheet para el comercial seleccionado */}
-            <div className="text-sm text-gray-500">
-              Meta mensual (Sheet):{" "}
-              <b className="tabular-nums">{targetSelected}</b>
-            </div>
-          </div>
+    <div className="text-sm text-gray-500">
+      Meta mensual (Sheet): <b className="tabular-nums">{targetSelected}</b>
+    </div>
+  </div>
 
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Ofertas del período</div>
-<div className="text-2xl font-bold">
-  {selectedComercial === "ALL" ? data.total : selected}
-</div>
-            </div>
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <StatCard label="Ofertas del período (compañía)">{data.total}</StatCard>
+    <StatCard label="Del comercial seleccionado">{selected}</StatCard>
+    <StatCard label="Cumplimiento (vs meta del Sheet)">
+      {(() => {
+        const pct = targetSelected > 0 ? Math.round((selected / targetSelected) * 100) : (selected > 0 ? 100 : 100);
+        const st  = offerStatus(selected, targetSelected);
+        return (
+          <span className="flex items-center gap-2">
+            <span>{pct}% ({selected}/{targetSelected})</span>
+            <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+          </span>
+        );
+      })()}
+    </StatCard>
+  </div>
 
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Del comercial seleccionado</div>
-              <div className="text-2xl font-bold">{selected}</div>
-            </div>
-
-            {/* Cumplimiento del seleccionado vs meta del Sheet */}
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Cumplimiento (vs meta del Sheet)</div>
-              {(() => {
-                const st = offerStatus(selected, targetSelected); // ya existe en tu archivo
-                const pct = targetSelected > 0
-                  ? Math.round((selected / targetSelected) * 100)
-                  : (selected > 0 ? 100 : 100);
-                return (
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold tabular-nums text-gray-900">
-                      {pct}% ({selected}/{targetSelected})
-                    </span>
-                    <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: Archivo VISITAS (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de visita</em>.
-          </div>
-        </section>
+  <div className="text-xs text-gray-500 mt-2">
+    Fuente: Archivo DETALLADO (una fila = una oferta). Requiere columnas: <em>Comercial</em> y <em>Fecha de oferta</em>.
+  </div>
+</section>
 
         {offersModel && (
           <section className="p-4 bg-white rounded-xl border">
@@ -1661,7 +1676,7 @@ const selected = useMemo(() => {
   );
 };
 
-// === REEMPLAZA TODO EL COMPONENTE ScreenVisits POR ESTE ===
+// === ScreenVisits ===
 const ScreenVisits = () => {
   const data = visitsKPI;
 
@@ -1672,7 +1687,6 @@ const selectedCount = React.useMemo(() => {
   const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
   return row ? row.count : 0;
 }, [visitsModel, data, selectedComercial]);
-
 
   // Año del período (formato YYYY-MM)
   const yearForVisits = React.useMemo(
@@ -1711,66 +1725,47 @@ const selectedCount = React.useMemo(() => {
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-            <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
 
-            <div className="text-sm text-gray-500">Periodo:
-              <select
-                className="ml-2 border rounded px-2 py-1 text-sm"
-                value={visitsPeriod}
-                onChange={(e) => setVisitsPeriod(e.target.value)}
-              >
-                {(data.periods || []).map((p: string) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
+    <div className="text-sm text-gray-500">Periodo:
+      <select
+        className="ml-2 border rounded px-2 py-1 text-sm"
+        value={visitsPeriod}
+        onChange={(e) => setVisitsPeriod(e.target.value)}
+      >
+        {(data.periods || []).map((p: string) => <option key={p} value={p}>{p}</option>)}
+      </select>
+    </div>
 
-            {/* Meta mensual desde Sheet para el comercial seleccionado */}
-            <div className="text-sm text-gray-500">
-              Meta mensual (Sheet):{" "}
-              <b className="tabular-nums">{targetSelected}</b>
-            </div>
-          </div>
+    <div className="text-sm text-gray-500">
+      Meta mensual (Sheet): <b className="tabular-nums">{targetSelected}</b>
+    </div>
+  </div>
 
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Visitas del período</div>
-<div className="text-2xl font-bold">
-  {selectedComercial === "ALL" ? data.total : selectedCount}
-</div>            </div>
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <StatCard label="Visitas del período (compañía)">{data.total}</StatCard>
+    <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+    <StatCard label="Cumplimiento (vs meta del Sheet)">
+      {(() => {
+        const pct = targetSelected > 0 ? Math.round((selectedCount / targetSelected) * 100) : (selectedCount > 0 ? 100 : 100);
+        const st  = offerStatus(selectedCount, targetSelected);
+        return (
+          <span className="flex items-center gap-2">
+            <span>{pct}% ({selectedCount}/{targetSelected})</span>
+            <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+          </span>
+        );
+      })()}
+    </StatCard>
+  </div>
 
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Del comercial seleccionado</div>
-              <div className="text-2xl font-bold">{selectedCount}</div>
-            </div>
-
-            {/* Cumplimiento del seleccionado vs meta del Sheet */}
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Cumplimiento (vs meta del Sheet)</div>
-              {(() => {
-                const st = offerStatus(selectedCount, targetSelected); // función de semáforo que ya tienes
-                const pct = targetSelected > 0
-                  ? Math.round((selectedCount / targetSelected) * 100)
-                  : (selectedCount > 0 ? 100 : 100);
-                return (
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold tabular-nums text-gray-900">
-                      {pct}% ({selectedCount}/{targetSelected})
-                    </span>
-                    <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: Archivo DETALLADO (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de visita</em>.
-          </div>
-        </section>
-
+  <div className="text-xs text-gray-500 mt-2">
+    Fuente: Archivo VISITAS (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de visita</em>.
+  </div>
+</section>
+        
         {visitsModel && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">Ranking de visitas por comercial ({data.period})</div>
@@ -1838,28 +1833,39 @@ const headerValue = useMemo(() => {
 
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Tarjeta superior */}
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="mb-3">
-            <label className="text-sm text-gray-600">Meta Sales Cycle (días)</label>
-            <input
-              type="number"
-              className="ml-2 border rounded-lg px-2 py-1 text-sm w-20"
-              value={cycleTarget}
-              onChange={(e) => setCycleTarget(Number(e.target.value))}
-            />
-          </div>
-          <div className="text-sm text-gray-500">Comercial: {selectedComercial}</div>
-          <div className="mt-2 flex items-end gap-3">
-            <div className={`w-3 h-3 rounded-full ${colorDays(Number(headerValue) || 0)}`}></div>
-            <div className="text-3xl font-bold">
-              {Math.round(Number(headerValue) || 0)} días
-            </div>
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            Verde ≤ meta ({cycleTarget} días) · Amarillo ≤ 120% meta · Rojo &gt; 120% meta
-          </div>
-        </section>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+    <div className="text-sm text-gray-500">Meta (días): <b>{cycleTarget}</b></div>
+  </div>
 
+  {(() => {
+    const totalAvg = Math.round(cd?.data?.totalAvgDays || 0);
+    const rowSel = selectedComercial === "ALL"
+      ? null
+      : (cd?.data?.porComercial || []).find((r: any) => r.comercial === selectedComercial);
+    const selAvg = Math.round(rowSel?.avgDays || 0);
+
+    // Cumplimiento: a menos días es mejor → target / promedio (cap 200%)
+    const cumpl = selAvg > 0 ? Math.min(200, Math.round((cycleTarget / selAvg) * 100)) : 0;
+
+    return (
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard label="Promedio (compañía)">{totalAvg} días</StatCard>
+        <StatCard label="Promedio (seleccionado)">
+          <span className="flex items-center gap-2">
+            <span>{selAvg} días</span>
+            <span className={`inline-block w-3 h-3 rounded-full ${colorDays(selAvg)}`} />
+          </span>
+        </StatCard>
+        <StatCard label="Cumplimiento vs meta (días)">
+          {cumpl}%
+        </StatCard>
+      </div>
+    );
+  })()}
+</section>
+        
         {/* Selector de modo */}
         {detail && (
           <section className="p-4 bg-white rounded-xl border">
@@ -1945,7 +1951,7 @@ const offersKPI = useMemo(() => {
 }, [offersModel, offersPeriod]);
 
 
-// === REEMPLAZA TODO EL COMPONENTE ScreenAttainment POR ESTE ===
+// === ScreenAttainment ===
 const ScreenAttainment = () => {
   // `pivot` debe existir (viene del RESUMEN que ya cargas en tu app)
   if (!pivot) {
@@ -2033,57 +2039,29 @@ const ScreenAttainment = () => {
       <BackBar title="KPI • Cumplimiento de Meta (Anual)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header / filtros */}
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-            <div className="text-sm text-gray-500">
-              Comercial: <b>{selectedComercial}</b>
-            </div>
-            <div className="text-sm text-gray-500">
-              Año (Sheet): <b>{settingsYear}</b>
-            </div>
-            <div className="text-xs text-gray-500 mt-1 md:mt-0">
-              Fuente: <b>RESUMEN</b> + <b>Meta anual</b> (Sheet)
-            </div>
-          </div>
+<section className="p-4 bg-white rounded-xl border">
+  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+    <div className="text-sm text-gray-500">Año (Sheet): <b>{settingsYear}</b></div>
+  </div>
 
-          {/* Tarjetas resumen */}
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Total compañía */}
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Total compañía (YTD vs meta anual)</div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold tabular-nums text-gray-900">
-                  {Math.round(kpi.total.pct)}% ({fmtCOP(kpi.total.wonCOP)} / {fmtCOP(kpi.total.goal)})
-                </span>
-                <span className={`inline-block w-3 h-3 rounded-full ${offerStatus(kpi.total.wonCOP, kpi.total.goal).dot}`} />
-              </div>
-            </div>
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <StatCard label="Cumplimiento (compañía)">
+      {Math.round(kpi.total.pct)}% ({fmtCOP(kpi.total.wonCOP)} / {fmtCOP(kpi.total.goal)})
+    </StatCard>
 
-            {/* Del comercial seleccionado (si no es ALL) */}
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Del comercial seleccionado</div>
-              {selectedAtt ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold tabular-nums text-gray-900">
-                    {Math.round(selectedAtt.pct)}% ({fmtCOP(selectedAtt.wonCOP)} / {fmtCOP(selectedAtt.goal)})
-                  </span>
-                  <span className={`inline-block w-3 h-3 rounded-full ${offerStatus(selectedAtt.wonCOP, selectedAtt.goal).dot}`} />
-                </div>
-              ) : (
-                <div className="text-2xl font-bold tabular-nums text-gray-400">—</div>
-              )}
-            </div>
+    <StatCard label="Cerrado del seleccionado">
+      {selectedComercial === "ALL"
+        ? "—"
+        : `${fmtCOP(selectedAtt?.wonCOP ?? 0)} / ${fmtCOP(selectedAtt?.goal ?? 0)}`}
+    </StatCard>
 
-            {/* Meta anual del seleccionado (desde Sheet) */}
-            <div className="p-3 bg-gray-100 rounded">
-              <div className="text-xs text-gray-500">Meta anual (seleccionado · Sheet)</div>
-              <div className="text-2xl font-bold tabular-nums">
-                {fmtCOP(goalFor(selectedComercial))}
-              </div>
-            </div>
-          </div>
-        </section>
-
+    <StatCard label="Cumplimiento (seleccionado)">
+      {selectedComercial === "ALL" ? "—" : `${Math.round(selectedAtt?.pct ?? 0)}%`}
+    </StatCard>
+  </div>
+</section>
+        
         {/* Ranking por comercial */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="mb-3 font-semibold">Ranking por comercial (cumplimiento vs meta anual del Sheet)</div>
