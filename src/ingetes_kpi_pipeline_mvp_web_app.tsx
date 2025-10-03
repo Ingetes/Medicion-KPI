@@ -1457,7 +1457,6 @@ const cycleData = useMemo(() => {
     </StatCard>
   </div>
 </section>
-          )}
         </main>
       </div>
     );
