@@ -1542,7 +1542,7 @@ const ScreenPipeline = () => {
             <StatCard label="Del comercial seleccionado">
               {selectedComercial === "ALL"
                 ? "—"
-                : `${fmtCOP(selected?.needQuote || 0)} (faltante para cumplimiento: ${fmtCOP(selected?.remaining || 0)})`}
+                : `${fmtCOP(selected?.remaining || 0)} (/${fmtCOP(selected?.needQuote || 0)})`}
             </StatCard>
           </div>
 
@@ -1606,7 +1606,7 @@ const ScreenPipeline = () => {
     <div>{fmtCOP(row.wonCOP)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Faltante por cotizar</div>
+    <div className="font-semibold">Faltante para cumplimiento</div>
     <div>{fmtCOP(row.remaining)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
