@@ -1596,13 +1596,13 @@ const ScreenPipeline = () => {
                 {fmtCOP(row.needQuote)}
               </span>
             </div>
-<div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs text-gray-700 mt-1">
+<div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-700 mt-1">
   <div className="bg-white p-2 rounded-lg border text-center">
     <div className="font-semibold">Meta anual</div>
     <div>{fmtCOP(row.goal)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Ganado</div>
+    <div className="font-semibold">Ofertas ganadas</div>
     <div>{fmtCOP(row.wonCOP)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
