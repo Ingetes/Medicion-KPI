@@ -1527,49 +1527,73 @@ const ScreenPipeline = () => {
         {/* Header */}
 <section className="p-4 bg-white rounded-xl border">
   <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
-    <div className="text-sm text-gray-500">Año (Sheet): <b>{settingsYear}</b></div>
-    <div className="text-sm text-gray-500 md:ml-auto">Win Rate asumido: <b>20%</b></div>
+    <div className="text-base text-gray-700 font-semibold">
+      Comercial: <b>{selectedComercial}</b>
+    </div>
+    <div className="text-base text-gray-700 font-semibold">
+      Año (Sheet): <b>{settingsYear}</b>
+    </div>
+    <div className="text-base text-gray-700 font-semibold md:ml-auto">
+      Win Rate asumido: <b>20%</b>
+    </div>
   </div>
 
   {(() => {
-    // si hay comercial seleccionado, mostramos sus cifras; si es ALL, mostramos compañía
     const isAll = selectedComercial === "ALL";
     const sel = isAll
       ? null
       : (kpi.porComercial.find(r => r.comercial === selectedComercial) ||
          { comercial: selectedComercial, wonCOP: 0, goal: metaAnualFor(selectedComercial, settingsYear), remaining: 0, needQuote: 0 });
 
-    // avance abiertas vs necesita (para el semáforo del seleccionado)
-    const openAmtSel = isAll ? 0 : (openAmountsByComercial.get(nameKey(selectedComercial)) || 0);
-    const pctOpenSel = !isAll && (sel?.needQuote || 0) > 0
-      ? Math.min(100, Math.round((openAmtSel / (sel!.needQuote || 1)) * 100))
-      : 0;
-    const colorClassSel = coverageColor(!isAll && (sel!.needQuote > 0 ? (openAmtSel / sel!.needQuote) : 0));
+    // Montos abiertos
+    const openAmtSel = isAll
+      ? Array.from(openAmountsByComercial.values()).reduce((a, b) => a + b, 0)
+      : (openAmountsByComercial.get(nameKey(selectedComercial)) || 0);
+
+    const needSel = isAll ? kpi.total.needQuote : sel?.needQuote || 0;
+
+    const pctOpenSel = needSel > 0 ? Math.min(100, Math.round((openAmtSel / needSel) * 100)) : 0;
+    const colorClassSel = coverageColor(needSel > 0 ? openAmtSel / needSel : 0);
+
+    const remainingVal = isAll ? kpi.total.remaining : sel?.remaining || 0;
 
     return (
       <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label={isAll ? "Faltante (compañía)" : "Faltante (comercial)"}>
-          {isAll ? fmtCOP(kpi.total.remaining) : fmtCOP(sel!.remaining)}
-        </StatCard>
+        {/* Faltante */}
+        <div className="bg-white p-4 rounded-lg border text-center">
+          <div className="text-sm text-gray-500 mb-1">
+            {isAll ? "Faltante (compañía)" : "Faltante (comercial)"}
+          </div>
+          <div className="text-xl font-bold text-gray-800">
+            {fmtCOP(remainingVal)}
+          </div>
+        </div>
 
-        <StatCard label={isAll ? "Cotización necesaria (compañía)" : "Cotización necesaria (comercial)"}>
-          {isAll ? fmtCOP(kpi.total.needQuote) : fmtCOP(sel!.needQuote)}
-        </StatCard>
+        {/* Cotización necesaria */}
+        <div className="bg-white p-4 rounded-lg border text-center">
+          <div className="text-sm text-gray-500 mb-1">
+            {isAll ? "Cotización necesaria (compañía)" : "Cotización necesaria (comercial)"}
+          </div>
+          <div className="text-xl font-bold text-gray-800">
+            {fmtCOP(needSel)}
+          </div>
+        </div>
 
-        <StatCard label={isAll ? "Del comercial seleccionado" : "Avance (abiertas vs necesita)"}>
-          {isAll ? "—" : (
-            <span className="flex items-center gap-2">
-              <span>{pctOpenSel}%</span>
-              <span className={`inline-block w-3 h-3 rounded-full ${colorClassSel}`} />
-            </span>
-          )}
-        </StatCard>
+        {/* Avance con semáforo */}
+        <div className="bg-white p-4 rounded-lg border text-center">
+          <div className="text-sm text-gray-500 mb-1">
+            {isAll ? "Avance total (abiertas vs necesita)" : "Avance (abiertas vs necesita)"}
+          </div>
+          <div className="text-xl font-bold flex items-center justify-center gap-2 text-gray-800">
+            <span>{pctOpenSel}%</span>
+            <span className={`inline-block w-4 h-4 rounded-full ${colorClassSel}`} />
+          </div>
+        </div>
       </div>
     );
   })()}
 
-  <div className="text-xs text-gray-500 mt-2">
+  <div className="text-xs text-gray-500 mt-3">
     Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
     Se usa el cerrado <b>(Closed Won)</b> desde el archivo RESUMEN y la meta anual desde el Sheet.
   </div>
