@@ -1596,8 +1596,7 @@ const ScreenPipeline = () => {
                 {fmtCOP(row.needQuote)}
               </span>
             </div>
-
-<div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-gray-700 mt-1">
+<div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs text-gray-700 mt-1">
   <div className="bg-white p-2 rounded-lg border text-center">
     <div className="font-semibold">Meta anual</div>
     <div>{fmtCOP(row.goal)}</div>
@@ -1620,11 +1619,9 @@ const ScreenPipeline = () => {
   <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 {/* Tarjeta: Abiertas + perdidas */}
-<div className="rounded-xl border p-4 w-full sm:w-[240px]">
-  <div className="text-sm text-gray-500">Abiertas + perdidas</div>
-  <div className="text-lg font-semibold">
-    {fmtPesos(openPlusLostAmountsByComercial.get(nameKey(item.comercial)) || 0)}
-  </div>
+<div className="bg-white p-2 rounded-lg border text-center">
+  <div className="font-semibold">Abiertas + perdidas</div>
+  <div>{fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 </div>
 
