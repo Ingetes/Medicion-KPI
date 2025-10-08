@@ -998,11 +998,13 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
         if (!comercial) continue;
 
         // recolectar para "todas las ofertas"
-        const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
-        const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
-        const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
+const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
+const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
+const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
+const amount  = idxImporte>=0 ? toNumber(row[idxImporte]) : 0;
 
-        allRows.push({ comercial, stage, created, closed });
+// ahora guardamos también el monto
+allRows.push({ comercial, stage, created, closed, amount });
 
         // filas cerradas para Sales Cycle (all / won)
         const isClosed = (!!closed) || CLOSED_RX.test(norm(stage));
@@ -1487,6 +1489,24 @@ const cycleData = useMemo(() => {
     </header>
   );
 
+// === monto de abiertas por comercial (usa detail.allRows) ===
+const openAmountsByComercial = React.useMemo(() => {
+  const m = new Map<string, number>();
+  const rows = detail?.allRows || [];
+  for (const r of rows) {
+    // abierta = no 'Closed Won' ni 'Closed Lost'
+    const st = String(r.stage || "").toUpperCase();
+    const isClosed = st === "CLOSED WON" || st === "CLOSED LOST";
+    if (isClosed) continue;
+
+    const imp = Number((r as any).amount || 0);
+    if (!imp) continue;
+
+    m.set(r.comercial, (m.get(r.comercial) || 0) + imp);
+  }
+  return m; // Map<comercial, montoAbierto>
+}, [detail]);
+
 const ScreenPipeline = () => {
   if (!pivot) {
     return (
@@ -1612,38 +1632,54 @@ const ScreenPipeline = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-700 mt-1">
-              <div className="bg-white p-2 rounded-lg border text-center">
-                <div className="font-semibold">Meta anual</div>
-                <div>{fmtCOP(row.goal)}</div>
-              </div>
-              <div className="bg-white p-2 rounded-lg border text-center">
-                <div className="font-semibold">Cerrado</div>
-                <div>{fmtCOP(row.wonCOP)}</div>
-              </div>
-              <div className="bg-white p-2 rounded-lg border text-center">
-                <div className="font-semibold">Faltante</div>
-                <div>{fmtCOP(row.remaining)}</div>
-              </div>
-              <div className="bg-white p-2 rounded-lg border text-center">
-                <div className="font-semibold">Necesita cotizar</div>
-                <div>{fmtCOP(row.needQuote)}</div>
-              </div>
-            </div>
+<div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-gray-700 mt-1">
+  <div className="bg-white p-2 rounded-lg border text-center">
+    <div className="font-semibold">Meta anual</div>
+    <div>{fmtCOP(row.goal)}</div>
+  </div>
+  <div className="bg-white p-2 rounded-lg border text-center">
+    <div className="font-semibold">Cerrado</div>
+    <div>{fmtCOP(row.wonCOP)}</div>
+  </div>
+  <div className="bg-white p-2 rounded-lg border text-center">
+    <div className="font-semibold">Faltante</div>
+    <div>{fmtCOP(row.remaining)}</div>
+  </div>
+  <div className="bg-white p-2 rounded-lg border text-center">
+    <div className="font-semibold">Necesita cotizar</div>
+    <div>{fmtCOP(row.needQuote)}</div>
+  </div>
+  {/* NUEVO */}
+  <div className="bg-white p-2 rounded-lg border text-center">
+    <div className="font-semibold">Ofertas abiertas</div>
+    <div>{fmtCOP(openAmountsByComercial.get(row.comercial) || 0)}</div>
+  </div>
+</div>
 
-            {/* Barra de progreso visual */}
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>Progreso respecto a meta</span>
-                <span>{100 - faltantePct}%</span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-2 bg-blue-600 rounded-full transition-all"
-                  style={{ width: `${100 - faltantePct}%` }}
-                />
-              </div>
-            </div>
+{/* Barra: abiertas vs lo que necesita cotizar */}
+{(() => {
+  const openAmt = openAmountsByComercial.get(row.comercial) || 0;
+  const pctOpen = row.needQuote > 0
+    ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
+    : 0;
+  return (
+    <div className="mt-3">
+      <div className="flex justify-between text-xs text-gray-500 mb-1">
+        <span>Avance (abiertas vs necesita)</span>
+        <span>{pctOpen}%</span>
+      </div>
+      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className="h-2 bg-blue-600 rounded-full transition-all"
+          style={{ width: `${pctOpen}%` }}
+        />
+      </div>
+      <div className="mt-1 text-xs text-gray-500">
+        Abiertas: <b>{fmtCOP(openAmt)}</b> / Necesita: <b>{fmtCOP(row.needQuote)}</b>
+      </div>
+    </div>
+  );
+})()}
           </div>
         </div>
       );
