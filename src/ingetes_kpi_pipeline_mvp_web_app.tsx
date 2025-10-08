@@ -1596,7 +1596,7 @@ const ScreenPipeline = () => {
   </div>
   {/* NUEVO */}
 <div className="bg-white p-2 rounded-lg border text-center">
-  <div className="font-semibold">Ofertas abiertas</div>
+  <div className="font-semibold">Ofertas abiertas y perdidas</div>
   <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 </div>
