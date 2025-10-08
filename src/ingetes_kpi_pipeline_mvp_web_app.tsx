@@ -1658,11 +1658,15 @@ const kpi = React.useMemo(
 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-700 mt-1">
   <div className="bg-white p-2 rounded-lg border text-center">
     <div className="font-semibold text-base md:text-lg">Meta anual</div>
-    <div>{fmtCOP(row.goal)}</div>
+<div className="text-2xl font-extrabold text-gray-900">
+  {fmtCOP(row.goal)}
+</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
     <div className="font-semibold text-base md:text-lg">Ofertas ganadas</div>
-    <div>{fmtCOP(row.wonCOP)}</div>
+    <div className="text-2xl font-extrabold text-gray-900">
+  {fmtCOP(row.wonCOP)}
+</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
         <div className="font-semibold text-base md:text-lg">Faltante para cumplimiento</div>
@@ -1670,13 +1674,13 @@ const kpi = React.useMemo(
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
         <div className="font-semibold text-base md:text-lg">Necesita cotizar</div>
-
-    <div>{fmtCOP(row.needQuote)}</div>
+    <div className="text-2xl font-extrabold text-gray-900">
+  {fmtCOP(row.needQuote)}
+</div>
   </div>
   {/* NUEVO */}
 <div className="bg-white p-2 rounded-lg border text-center">
   <div className="font-semibold text-base md:text-lg">Ofertas abiertas</div>
-
   <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 {/* Tarjeta: Abiertas + perdidas */}
