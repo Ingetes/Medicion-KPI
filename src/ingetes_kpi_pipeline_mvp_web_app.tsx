@@ -1432,20 +1432,26 @@ const cycleData = useMemo(() => {
     </header>
   );
 
-// === monto de abiertas por comercial (usa detail.allRows) ===
+// === monto de ofertas ABIERTAS por comercial (normalizado) ===
 const openAmountsByComercial = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = detail?.allRows || [];
+
   for (const r of rows) {
+    // excluir cerradas (Closed Won / Closed Lost / Ganada / Perdida)
     const st = String(r.stage || "").toUpperCase();
-    const isClosed = st === "CLOSED WON" || st === "CLOSED LOST";
+    const isClosed = /CLOSED\s*WON|CLOSED\s*LOST|GANAD|PERDID/.test(st);
     if (isClosed) continue;
 
     const imp = Number((r as any).amount || 0);
     if (!imp) continue;
 
-const k = nameKey(comercial);
-m.set(k, (m.get(k) || 0) + valor);
+    // normaliza el comercial a tu lista fija
+    const com = mapComercial(r.comercial);
+    if (!com) continue;
+
+    const key = nameKey(com);                // clave canónica (sin tildes, mayús)
+    m.set(key, (m.get(key) || 0) + imp);     // acumula monto abierto
   }
   return m;
 }, [detail]);
@@ -1593,24 +1599,27 @@ const ScreenPipeline = () => {
     <div>{fmtCOP(row.needQuote)}</div>
   </div>
   {/* NUEVO */}
-  <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Ofertas abiertas</div>
-    <div>{fmtCOP(openAmountsByComercial.get(row.comercial) || 0)}</div>
-  </div>
+<div className="bg-white p-2 rounded-lg border text-center">
+  <div className="font-semibold">Ofertas abiertas</div>
+  <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
+</div>
 </div>
 
 {/* Barra: abiertas vs lo que necesita cotizar */}
 {(() => {
-  const openAmt = openAmountsByComercial.get(row.comercial) || 0;
+  const openAmt = openAmountsByComercial.get(nameKey(row.comercial)) || 0;
   const pctOpen = row.needQuote > 0
     ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
     : 0;
   return (
     <div className="mt-3">
-      <div className="flex justify-between text-xs text-gray-500 mb-1">
-        <span>Avance (abiertas vs necesita)</span>
-        <span>{pctOpen}%</span>
-      </div>
+<div className="flex justify-between text-xs text-gray-500 mb-1">
+  <span>Avance (abiertas vs necesita)</span>
+  <span className="flex items-center gap-1">
+    {pctOpen}% 
+    <span className={`${coverageColor(row.needQuote > 0 ? (openAmt / row.needQuote) : 0)} text-lg leading-none`}>●</span>
+  </span>
+</div>
       <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div
           className="h-2 bg-blue-600 rounded-full transition-all"
