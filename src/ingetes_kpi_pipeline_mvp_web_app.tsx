@@ -1542,7 +1542,7 @@ const ScreenPipeline = () => {
             <StatCard label="Del comercial seleccionado">
               {selectedComercial === "ALL"
                 ? "—"
-                : `${fmtCOP(selected?.remaining || 0)} (/${fmtCOP(selected?.needQuote || 0)})`}
+                : `${fmtCOP(selected?.remaining || 0)} / ${fmtCOP(selected?.needQuote || 0)}`}
             </StatCard>
           </div>
 
