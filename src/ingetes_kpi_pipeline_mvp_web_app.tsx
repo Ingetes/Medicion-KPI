@@ -1538,28 +1538,94 @@ const ScreenPipeline = () => {
           </div>
         </section>
 
-        {/* Ranking */}
-        <section className="p-4 bg-white rounded-xl border">
-          <div className="mb-3 font-semibold">Ranking por comercial (cotización necesaria)</div>
-          <div className="space-y-2">
-            {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
-              const pct = Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100);
-              return (
-                <div key={row.comercial} className="text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{i + 1}. {row.comercial}</div>
-                    <div className="tabular-nums text-gray-900">
-                      {fmtCOP(row.needQuote)} <span className="text-gray-500"> (faltante: {fmtCOP(row.remaining)}, meta: {fmtCOP(row.goal)}, cerrado: {fmtCOP(row.wonCOP)})</span>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded mt-1">
-                    <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
-                  </div>
-                </div>
-              );
-            })}
+{/* Ranking visual */}
+<section className="p-4 bg-white rounded-xl border">
+  <div className="mb-3 font-semibold text-gray-800">
+    Ranking por comercial (Forecast necesario para cumplir meta)
+  </div>
+
+  <div className="grid grid-cols-1 gap-3">
+    {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
+      const pctBar = Math.min(
+        Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100),
+        100
+      );
+
+      const fmtCOP = (n: number) =>
+        (Number(n) || 0).toLocaleString("es-CO", {
+          style: "currency",
+          currency: "COP",
+          maximumFractionDigits: 0,
+        });
+
+      const faltantePct = row.goal
+        ? Math.min(100, Math.round((row.remaining / row.goal) * 100))
+        : 0;
+
+      return (
+        <div
+          key={row.comercial}
+          className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+        >
+          <div className="p-4 flex flex-col gap-2">
+            {/* Encabezado */}
+            <div className="flex justify-between items-center">
+              <div className="font-semibold text-gray-900 text-base">
+                {i + 1}. {row.comercial}
+              </div>
+              <span className="text-sm text-gray-500">
+                {faltantePct > 0
+                  ? `Le falta ${faltantePct}% de su meta`
+                  : "Meta cumplida ✅"}
+              </span>
+            </div>
+
+            {/* Valores principales */}
+            <div className="text-sm text-gray-800">
+              <b>Debe cotizar:</b>{" "}
+              <span className="text-gray-900 font-semibold">
+                {fmtCOP(row.needQuote)}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-700 mt-1">
+              <div className="bg-white p-2 rounded-lg border text-center">
+                <div className="font-semibold">Meta anual</div>
+                <div>{fmtCOP(row.goal)}</div>
+              </div>
+              <div className="bg-white p-2 rounded-lg border text-center">
+                <div className="font-semibold">Cerrado</div>
+                <div>{fmtCOP(row.wonCOP)}</div>
+              </div>
+              <div className="bg-white p-2 rounded-lg border text-center">
+                <div className="font-semibold">Faltante</div>
+                <div>{fmtCOP(row.remaining)}</div>
+              </div>
+              <div className="bg-white p-2 rounded-lg border text-center">
+                <div className="font-semibold">Necesita cotizar</div>
+                <div>{fmtCOP(row.needQuote)}</div>
+              </div>
+            </div>
+
+            {/* Barra de progreso visual */}
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>Progreso respecto a meta</span>
+                <span>{100 - faltantePct}%</span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-2 bg-blue-600 rounded-full transition-all"
+                  style={{ width: `${100 - faltantePct}%` }}
+                />
+              </div>
+            </div>
           </div>
-        </section>
+        </div>
+      );
+    })}
+  </div>
+</section>
       </main>
     </div>
   );
