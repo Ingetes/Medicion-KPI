@@ -1566,11 +1566,6 @@ const ScreenPipeline = () => {
               <div className="font-semibold text-gray-900 text-base">
                 {i + 1}. {row.comercial}
               </div>
-              <span className="text-sm text-gray-500">
-                {faltantePct > 0
-                  ? `Le falta ${faltantePct}% de su meta`
-                  : "Meta cumplida ✅"}
-              </span>
             </div>
 
             {/* Valores principales */}
