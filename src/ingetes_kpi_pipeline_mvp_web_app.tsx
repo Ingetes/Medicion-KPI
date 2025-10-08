@@ -1131,7 +1131,6 @@ export default function IngetesKPIApp() {
   const [winRateTarget, setWinRateTarget] = useState(30);
   const [cycleTarget, setCycleTarget] = useState(45);
   const [assumedWinRate, setAssumedWinRate] = useState<number>(20); // 👈 aquí sí
-  const [settingsYear, setSettingsYear] = useState<number>(new Date().getFullYear());
 
 // ===== Ajustes (metas por comercial) =====
 const [showSettings, setShowSettings] = useState(false);
@@ -1146,14 +1145,14 @@ const [metasModalRows, setMetasModalRows] = useState<
 const [savingMetas, setSavingMetas] = useState(false);
 
 // ===== Metas para KPIs (por año desde Sheet) =====
-type MetaRecordForYear = {
+type MetaSheetRow = {
   comercial: string;
-  stage: string;
-  created: Date | null;
-  closed: Date | null;
-  amount: number; // nuevo
+  metaAnual: number;
+  metaOfertas: number;
+  metaVisitas: number;
 };
-const [metasByYear, setMetasByYear] = useState<Record<number, MetaRecordForYear[]>>({});
+const [metasByYear, setMetasByYear] = useState<Record<number, MetaSheetRow[]>>({});
+
 const normalizeName = (s: string) =>
   String(s || "").normalize("NFKC").trim().replace(/\s+/g, " ").toUpperCase();
 
@@ -1494,8 +1493,6 @@ const ScreenPipeline = () => {
   }
 
   // Tomamos metas del año que usas en Ajustes (settingsYear)
-  // y una tasa fija del 20% (0.20)
-  const WIN_RATE = // Win Rate asumido (editable desde UI)
 const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100; // 0..1
 
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
@@ -1601,7 +1598,7 @@ const kpi = React.useMemo(
           </div>
           <div className="text-xl font-bold flex items-center justify-center gap-2 text-gray-800">
             <span>{pctOpenSel}%</span>
-            <span className={`inline-block w-4 h-4 rounded-full ${colorClassSel}`} />
+            <span className={`inline-block w-5 h-5 rounded-full ${colorClassSel}`} />
           </div>
         </div>
       </div>
@@ -1660,29 +1657,31 @@ const kpi = React.useMemo(
             </div>
 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-700 mt-1">
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Meta anual</div>
+    <div className="font-semibold text-base md:text-lg">Meta anual</div>
     <div>{fmtCOP(row.goal)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Ofertas ganadas</div>
+    <div className="font-semibold text-base md:text-lg">Ofertas ganadas</div>
     <div>{fmtCOP(row.wonCOP)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Faltante para cumplimiento</div>
+        <div className="font-semibold text-base md:text-lg">Faltante para cumplimiento</div>
     <div>{fmtCOP(row.remaining)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Necesita cotizar</div>
+        <div className="font-semibold text-base md:text-lg">Necesita cotizar</div>
+
     <div>{fmtCOP(row.needQuote)}</div>
   </div>
   {/* NUEVO */}
 <div className="bg-white p-2 rounded-lg border text-center">
-  <div className="font-semibold">Ofertas abiertas</div>
+  <div className="font-semibold text-base md:text-lg">Ofertas abiertas</div>
+
   <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 {/* Tarjeta: Abiertas + perdidas */}
 <div className="bg-white p-2 rounded-lg border text-center">
-  <div className="font-semibold">Abiertas + perdidas</div>
+ <div className="font-semibold text-base md:text-lg">Abiertas + perdida</div>
   <div>{fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
 </div>
 </div>
@@ -2255,35 +2254,32 @@ const ScreenAttainment = () => {
   // ================== Construir KPI desde el pivot ==================
   type RowAtt = { comercial: string; wonCOP: number; goal: number; pct: number };
 
-   win rate <b>20%() => {
-    // pivot.rows: [{ comercial, values: { Etapa1:{sum}, Etapa2:{sum} ... } }, ...]
-    const porComercial: RowAtt[] = pivot.rows.map((r: any) => {
-      // Sumar solo etapas ganadas (Closed Won / Ganada)
-      let wonCOP = 0;
-      for (const [stage, agg] of Object.entries(r.values)) {
-        const s = String(stage).toLowerCase();
-        // admite "closed won", "ganada", "ganado", etc.
-        if (s.includes("closed won") || s.includes("ganad")) {
-          wonCOP += Number((agg as any)?.sum || 0);
-        }
+const kpi = React.useMemo(() => {
+  type RowAtt = { comercial: string; wonCOP: number; goal: number; pct: number };
+
+  const porComercial: RowAtt[] = pivot.rows.map((r: any) => {
+    // Sumar solo etapas ganadas (Closed Won / Ganada)
+    let wonCOP = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const s = String(stage).toLowerCase();
+      if (s.includes("closed won") || s.includes("ganad")) {
+        wonCOP += Number((agg as any)?.sum || 0);
       }
-      const goal = goalFor(r.comercial);
-      const pct = goal > 0 ? (wonCOP * 100) / goal : (wonCOP > 0 ? 100 : 100); // evita div/0
-      return { comercial: r.comercial, wonCOP, goal, pct };
-    });
+    }
+    const goal = goalFor(r.comercial);
+    const pct = goal > 0 ? (wonCOP * 100) / goal : (wonCOP > 0 ? 100 : 100);
+    return { comercial: r.comercial, wonCOP, goal, pct };
+  });
 
-    // Totales (suma de metas y ganadas)
-    const agg = porComercial.reduce(
-      (acc, x) => ({ wonCOP: acc.wonCOP + x.wonCOP, goal: acc.goal + x.goal }),
-      { wonCOP: 0, goal: 0 }
-    );
-    const totalPct = agg.goal > 0 ? (agg.wonCOP * 100) / agg.goal : (agg.wonCOP > 0 ? 100 : 100);
+  const agg = porComercial.reduce(
+    (acc, x) => ({ wonCOP: acc.wonCOP + x.wonCOP, goal: acc.goal + x.goal }),
+    { wonCOP: 0, goal: 0 }
+  );
+  const totalPct = agg.goal > 0 ? (agg.wonCOP * 100) / agg.goal : (agg.wonCOP > 0 ? 100 : 100);
 
-    // Ordenar ranking por % desc
-    porComercial.sort((a, b) => b.pct - a.pct);
-
-    return { porComercial, total: { wonCOP: agg.wonCOP, goal: agg.goal, pct: totalPct } };
-  }, [pivot, goalFor]);
+  porComercial.sort((a, b) => b.pct - a.pct);
+  return { porComercial, total: { wonCOP: agg.wonCOP, goal: agg.goal, pct: totalPct } };
+}, [pivot, goalFor]);
 
   // Comercial seleccionado
   const selectedAtt = React.useMemo(() => {
