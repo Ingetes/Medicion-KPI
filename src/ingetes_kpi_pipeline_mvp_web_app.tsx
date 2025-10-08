@@ -130,16 +130,6 @@ const norm = (s:any) => String(s ?? "")
   .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
 
-const toNumber = (v: any) => {
-  if (v == null || v === "") return 0;
-  let s = String(v).trim();
-  s = s.replace(/[^\d,.-]/g, "");
-  if (s.includes(",") && !s.includes(".")) s = s.replace(/,/g, ".");
-  if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
-  const n = Number(s);
-  return isFinite(n) ? n : 0;
-};
-
 function calcOfferCountFromDetail(detailModel:any){
   const by = new Map<string, number>();
   const all = detailModel?.allRows || [];
