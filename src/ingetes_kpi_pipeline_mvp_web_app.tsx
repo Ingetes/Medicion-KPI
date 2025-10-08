@@ -2004,7 +2004,7 @@ const headerValue = useMemo(() => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Sales Cycle (días)" />
+      <BackBar title="KPI • Ciclo de venta (días)" />
 
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Tarjeta superior */}
