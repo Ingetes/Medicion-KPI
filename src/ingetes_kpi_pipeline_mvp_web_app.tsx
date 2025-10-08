@@ -946,19 +946,6 @@ function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
 
 function tryParseAnyDetail(wb: XLSX.WorkBook){
   const errs:string[] = [];
-// Normalizador de encabezados
-const norm = (x: any) => String(x ?? "").trim().toLowerCase();
-
-// Encuentra la columna de Importe / Amount / Precio total / etc.
-const possibleAmountHeaders = [
-  "importe", "amount",
-  "precio total", "precio_total", "valor total",
-  "monto", "valor", "total", "precio"
-];
-
-// header es tu fila de encabezado, p.ej. array con los títulos de columna
-const idxImporte = header.findIndex(h => possibleAmountHeaders.includes(norm(h)));
-
   const pickCols = (A:any[][]) => {
     let headerRow = 0, best = -1;
     let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1;
@@ -983,6 +970,25 @@ const idxImporte = header.findIndex(h => possibleAmountHeaders.includes(norm(h))
       const ws = wb.Sheets[sn]; if (!ws) continue;
       const A:any[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" }) as any[][];
       if (!A.length) continue;
+// … ya tienes: const headersRaw = (A[headerRow] || []).slice();
+
+// Índice de IMPORTE en base a distintos nombres posibles
+const possibleAmountHeaders = [
+  "importe", "amount",
+  "precio total", "precio_total", "valor total",
+  "monto", "valor", "total", "precio"
+];
+
+const findIdxHeader = (cands: string[]) => {
+  for (let c = 0; c < headersRaw.length; c++) {
+    const h = norm(headersRaw[c] ?? ""); // usa el norm global ya definido arriba en el archivo
+    // match por igualdad o contiene (para casos como "Total precio")
+    if (cands.some(k => h === k || h.includes(k))) return c;
+  }
+  return -1;
+};
+
+const idxImporte = findIdxHeader(possibleAmountHeaders);
 
       const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
       if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
@@ -1008,14 +1014,12 @@ const idxImporte = header.findIndex(h => possibleAmountHeaders.includes(norm(h))
         const comercial = carryCom;
         if (!comercial) continue;
 
-        // recolectar para "todas las ofertas"
+// recolectar para "todas las ofertas"
 const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
 const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
 const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
 const amount  = idxImporte >= 0 ? toNumber(row[idxImporte]) : 0;
-allRows.push({ comercial, stage, created, closed, amount });
-        
-// ahora guardamos también el monto
+
 allRows.push({ comercial, stage, created, closed, amount });
 
         // filas cerradas para Sales Cycle (all / won)
