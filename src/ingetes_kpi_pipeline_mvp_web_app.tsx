@@ -1649,7 +1649,7 @@ const kpi = React.useMemo(
   {/* Meta anual */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(row.goal)}
     </div>
   </div>
@@ -1657,7 +1657,7 @@ const kpi = React.useMemo(
   {/* Ofertas ganadas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(row.wonCOP)}
     </div>
   </div>
@@ -1665,7 +1665,7 @@ const kpi = React.useMemo(
   {/* Faltante para cumplimiento */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(row.remaining)}
     </div>
   </div>
@@ -1673,7 +1673,7 @@ const kpi = React.useMemo(
   {/* Necesita cotizar */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(row.needQuote)}
     </div>
   </div>
@@ -1681,7 +1681,7 @@ const kpi = React.useMemo(
   {/* Ofertas abiertas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
     </div>
   </div>
@@ -1689,7 +1689,7 @@ const kpi = React.useMemo(
   {/* Abiertas + perdidas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Total en ofertas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
       {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
     </div>
   </div>
@@ -2375,16 +2375,21 @@ const kpi = React.useMemo(() => {
       <header className="px-4 py-3 bg-white border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h2 className="text-xl md:text-2xl font-bold">Menú principal</h2>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-2 rounded border" onClick={resetAll}>Reiniciar</button>
-              <button
-              className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50"
-              onClick={openSettings}
-              title="Editar metas por comercial"
-            >
-              Ajustes
-            </button>
-          </div>
+<div className="flex items-center gap-2">
+  <button
+    className="px-4 py-2 text-sm font-medium rounded-lg border bg-white hover:bg-gray-50"
+    onClick={resetAll}
+  >
+    Reiniciar
+  </button>
+  <button
+    className="px-4 py-2 text-sm font-medium rounded-lg border bg-white hover:bg-gray-50"
+    onClick={openSettings}
+    title="Editar metas por comercial"
+  >
+    Ajustes
+  </button>
+</div>
         </div>
       </header>
 {showSettings && (
