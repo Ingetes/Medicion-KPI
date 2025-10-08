@@ -1521,7 +1521,7 @@ const ScreenPipeline = () => {
             <StatCard label="Del comercial seleccionado">
               {selectedComercial === "ALL"
                 ? "—"
-                : `${fmtCOP(selected?.needQuote || 0)} (faltante: ${fmtCOP(selected?.remaining || 0)})`}
+                : `${fmtCOP(selected?.needQuote || 0)} (faltante para cumplimiento: ${fmtCOP(selected?.remaining || 0)})`}
             </StatCard>
           </div>
 
