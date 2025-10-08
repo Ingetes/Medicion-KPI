@@ -697,7 +697,6 @@ function tryParseAnyPivot(wb: XLSX.WorkBook) {
 }
 
 // Helpers de etapa
-const isOpenStage = (k:string) => OPEN_STAGES.some(t => k.includes(t));
 const isWonStage  = (k:string) => /closed won|ganad/.test(k);
 const isLostStage = (k:string) => /closed lost|perdid/.test(k);
 
