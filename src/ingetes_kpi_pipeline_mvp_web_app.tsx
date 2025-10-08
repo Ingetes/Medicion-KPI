@@ -1432,26 +1432,47 @@ const cycleData = useMemo(() => {
     </header>
   );
 
-// === monto de ofertas ABIERTAS por comercial (normalizado) ===
+// === MONTO DE OFERTAS ABIERTAS por comercial (excluye Won y Lost) ===
 const openAmountsByComercial = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = detail?.allRows || [];
 
   for (const r of rows) {
-    // excluir cerradas (Closed Won / Closed Lost / Ganada / Perdida)
     const st = String(r.stage || "").toUpperCase();
-    const isClosed = /CLOSED\s*WON|CLOSED\s*LOST|GANAD|PERDID/.test(st);
-    if (isClosed) continue;
+    const isWon  = /CLOSED\s*WON|GANAD/.test(st);
+    const isLost = /CLOSED\s*LOST|PERDID/.test(st);
+    if (isWon || isLost) continue; // <- SOLO abiertas
 
     const imp = Number((r as any).amount || 0);
     if (!imp) continue;
 
-    // normaliza el comercial a tu lista fija
     const com = mapComercial(r.comercial);
     if (!com) continue;
 
-    const key = nameKey(com);                // clave canónica (sin tildes, mayús)
-    m.set(key, (m.get(key) || 0) + imp);     // acumula monto abierto
+    const key = nameKey(com);
+    m.set(key, (m.get(key) || 0) + imp);
+  }
+  return m;
+}, [detail]);
+
+// === MONTO DE OFERTAS ABIERTAS + PERDIDAS por comercial (excluye solo Won) ===
+const openPlusLostAmountsByComercial = React.useMemo(() => {
+  const m = new Map<string, number>();
+  const rows = detail?.allRows || [];
+
+  for (const r of rows) {
+    const st = String(r.stage || "").toUpperCase();
+    const isWon = /CLOSED\s*WON|GANAD/.test(st);
+    if (isWon) continue; // <- excluimos SOLO ganadas (Closed Won)
+
+    const imp = Number((r as any).amount || 0);
+    if (!imp) continue;
+
+    const com = mapComercial(r.comercial);
+    if (!com) continue;
+
+    const key = nameKey(com);
+    m.set(key, (m.get(key) || 0) + imp);
   }
   return m;
 }, [detail]);
@@ -1586,7 +1607,7 @@ const ScreenPipeline = () => {
     <div>{fmtCOP(row.wonCOP)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Faltante</div>
+    <div className="font-semibold">Faltante por cotizar</div>
     <div>{fmtCOP(row.remaining)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
@@ -1595,8 +1616,15 @@ const ScreenPipeline = () => {
   </div>
   {/* NUEVO */}
 <div className="bg-white p-2 rounded-lg border text-center">
-  <div className="font-semibold">Ofertas abiertas y perdidas</div>
+  <div className="font-semibold">Ofertas abiertas</div>
   <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
+</div>
+{/* Tarjeta: Abiertas + perdidas */}
+<div className="rounded-xl border p-4 w-full sm:w-[240px]">
+  <div className="text-sm text-gray-500">Abiertas + perdidas</div>
+  <div className="text-lg font-semibold">
+    {fmtPesos(openPlusLostAmountsByComercial.get(nameKey(item.comercial)) || 0)}
+  </div>
 </div>
 </div>
 
