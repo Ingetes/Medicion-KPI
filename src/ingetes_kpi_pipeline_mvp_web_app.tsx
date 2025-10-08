@@ -158,40 +158,41 @@ function calcOfferCountFromDetail(detailModel:any){
 
 function parseExcelDate(v:any): Date|null {
   if (v == null || v === "") return null;
-  if (v instanceof Date) {
-    // Normaliza a medianoche UTC
-    return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
-  }
+  if (v instanceof Date) return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
   if (typeof v === "number") {
-    const d = XLSX.SSF.parse_date_code(v);
+    const d = (XLSX as any).SSF.parse_date_code(v);
     if (!d) return null;
     return new Date(Date.UTC(d.y, d.m - 1, d.d));
   }
   const s = String(v).trim();
-
-  // dd/mm/yyyy o dd-mm-yyyy
   const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (m){
-    const dd = +m[1], mm = +m[2]-1, yy = +m[3];
-    const y = yy < 100 ? 2000 + yy : yy;
+    const dd = +m[1], mm = +m[2]-1, yy = +m[3]; const y = yy < 100 ? 2000 + yy : yy;
     return new Date(Date.UTC(y, mm, dd));
   }
-
-  // fallback ISO-like → normaliza a UTC (medianoche)
   const d2 = new Date(s);
-  if (!isNaN(d2.getTime())) {
-    return new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
-  }
-  return null;
+  return isNaN(d2.getTime()) ? null : new Date(Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()));
 }
 
-const CLOSED_RX = /(closed\s*won|closed\s*lost|ganad|perdid|cerrad[oa])/i;
-const OWNER_KEYS  = ["propietario", "owner", "comercial", "vendedor", "ejecutivo"];
-const STAGE_KEYS  = ["etapa", "stage", "estado"];
+const toNumber = (v:any) => {
+  if (v == null || v === "") return 0;
+  let s = String(v).trim().replace(/[^\d,.-]/g, "");
+  if (s.includes(",") && !s.includes(".")) s = s.replace(/,/g, ".");
+  if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+};
+
+// Palabras clave para detectar columnas
+const OWNER_KEYS  = ["propietario","owner","comercial","vendedor","ejecutivo"];
+const STAGE_KEYS  = ["etapa","stage","estado"];
 const CREATE_KEYS = ["fecha de creacion","fecha creación","created","created date","fecha creacion"];
 const CLOSE_KEYS  = ["fecha de cierre","fecha cierre","close date","fecha cierre real","fecha cierre oportunidad"];
+
+// Expresiones para cerradas / ganadas / perdidas
 const CLOSED_WON_RX  = /(closed\s*won|ganad|cerrad[oa].*ganad)/i;
 const CLOSED_LOST_RX = /(closed\s*lost|perdid|cerrad[oa].*perdid)/i;
+const CLOSED_RX      = /(closed\s*won|closed\s*lost|ganad|perdid|cerrad[oa])/i;
 
 // Semáforo por cumplimiento vs meta
 function offerStatus(count: number, target: number) {
@@ -251,9 +252,9 @@ const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "op
   "ID. DECISION MAKERS","PROSPECTING","PROPOSAL/PRICE QUOTE","NEGOTIATION"];
 const WON_STAGES = ["closed won", "ganad"]; // detectar 'Closed Won' y variantes en español
 const normStage = (s?: string) => (s || '').trim().toUpperCase();
-const isOpenStage = (stage: string) => {
-  const s = String(stage || "").toLowerCase();
-  return !(s === "closed won" || s === "closed lost");
+const isOpenStage = (stage?: string) => {
+  const st = String(stage || "").trim().toUpperCase();
+  return st && st !== "CLOSED WON" && st !== "CLOSED LOST";
 };
 
 const coverageColor = (p: number) => (p >= 1 ? 'text-green-600' : p >= 0.8 ? 'text-yellow-600' : 'text-red-600');
@@ -353,29 +354,18 @@ const looksOLE = (u8: Uint8Array) => u8.length >= 8 && u8[0] === 0xd0 && u8[1] =
 async function readWorkbookRobust(file: File) {
   const buf = await file.arrayBuffer();
   const u8 = new Uint8Array(buf);
+  const looksZip = (u8:Uint8Array) => u8.length>=4 && u8[0]===0x50 && u8[1]===0x4b;
+  const looksOLE = (u8:Uint8Array) => u8.length>=8 && u8[0]===0xd0 && u8[1]===0xcf;
+
   if (looksZip(u8) || looksOLE(u8)) {
     try { return XLSX.read(u8, { type: "array", dense: true }); }
-    catch (e: any) {
-      const msg = String(e?.message || "");
-      if (/bad uncompressed size/i.test(msg) || /End of data reached/i.test(msg)) {
-        try { const text = await file.text(); return XLSX.read(text, { type: "string", dense: true }); } catch {}
-        try {
-          const bin = Array.from(u8).map(b => String.fromCharCode(b)).join("");
-          const b64 = typeof btoa !== 'undefined' ? btoa(bin) : (typeof Buffer !== 'undefined' ? Buffer.from(bin, 'binary').toString('base64') : "");
-          if (b64) return XLSX.read(b64, { type: "base64", dense: true });
-        } catch {}
-        throw new Error("El archivo parece .xlsx pero no se pudo descomprimir. Reexporta o sube CSV.");
-      }
-      throw e;
-    }
+    catch { /* fallback a string/base64 si hace falta */ }
   }
-  try { const text = await file.text(); return XLSX.read(text, { type: "string", dense: true }); } catch {}
-  try {
-    const bin = Array.from(u8).map(b => String.fromCharCode(b)).join("");
-    const b64 = typeof btoa !== 'undefined' ? btoa(bin) : (typeof Buffer !== 'undefined' ? Buffer.from(bin, 'binary').toString('base64') : "");
-    if (b64) return XLSX.read(b64, { type: "base64", dense: true });
-  } catch {}
-  throw new Error("No se pudo leer el archivo. Sube .xlsx/.xlsm/.xlsb/.xls o .csv válido.");
+  try { const text = await file.text(); return XLSX.read(text, { type:"string", dense:true }); } catch {}
+  const bin = Array.from(u8).map(b=>String.fromCharCode(b)).join("");
+  const b64 = typeof btoa!=="undefined" ? btoa(bin) : "";
+  if (b64) return XLSX.read(b64, { type:"base64", dense:true });
+  throw new Error("No se pudo leer el archivo.");
 }
 
 function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
@@ -893,65 +883,16 @@ function tryParseAnyVisits(wb: XLSX.WorkBook) {
 
 // ==================== Parser DETALLE ====================
 function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
-  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any;
+  const A:any[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" }) as any[][];
   if (!A.length) throw new Error("Detalle: hoja vacía");
-  const hnorm = (s: any) => norm(String(s).replace(/[()↑%]/g, " "));
-  const EXPECT = [
-    "propietario de oportunidad","nombre de la oportunidad","importe","probabilidad","etapa",
-    "fecha de creacion","fecha de cierre","antiguedad","nombre del producto","precio total",
-    "descripcion del producto","nombre de la cuenta"
-  ];
-  const scoreRow = (row: any[]) => { const set = row.map(hnorm); let score = 0; for (const exp of EXPECT) if (set.some(h => h.includes(exp))) score++; return score; };
-  let headerRow = 0, bestScore = -1; for (let r = 0; r < Math.min(A.length, 40); r++) { const sc = scoreRow(A[r] || []); if (sc > bestScore) { bestScore = sc; headerRow = r; } }
-  if (bestScore < 3) headerRow = 0;
-  const headersRaw = (A[headerRow] || []).slice();
-  const dbg = [ `Fila header detectada: ${headerRow + 1}`, "Encabezados detectados: " + headersRaw.join(" | ") ];
-  const findIdx = (cands: string[]) => { for (let c = 0; c < headersRaw.length; c++) { const h = hnorm(headersRaw[c]); for (const cand of cands) if (h === cand || h.includes(cand)) return c; } return -1; };
-  const idxOwner   = findIdx(["propietario de oportunidad","propietario","owner"]);
-  const idxStage   = findIdx(["etapa","stage","estado"]);
-  const idxAging   = findIdx(["antiguedad","antigüedad","aging","days open"]);
-  const idxCreated = findIdx(["fecha de creacion","fecha creacion","fecha de creación","created date","created"]);
-  const idxClosed  = findIdx(["fecha de cierre","close date","closed date"]);
-  const idxImporte = findIdx(["importe","monto","amount"]);
-  const idxProb    = findIdx(["probabilidad","probability"]);
-  const idxProd    = findIdx(["nombre del producto","producto"]);
-  const idxPrecioT = findIdx(["precio total","total price"]);
-  const idxCuenta  = findIdx(["nombre de la cuenta","cuenta","account name"]);
 
-  if (idxOwner < 0 || idxStage < 0 || (idxAging < 0 && idxCreated < 0)) {
-    dbg.push("Requisito mínimo: Comercial (Propietario de la oportunidad), Etapa y Antigüedad (o Fechas de creación/cierre).");
-    const err: any = new Error("Detalle: no encontré columnas mínimas. Revisa el debug.");
-    err.debug = dbg; throw err;
-  }
-
-  const out: any[] = [];
-  for (let r = headerRow + 1; r < A.length; r++) {
-    const row = A[r] || []; const isEmpty = row.every((v: any) => String(v).trim() === ""); if (isEmpty) continue;
-    const get = (i: number) => (i >= 0 ? row[i] : "");
-    const Comercial       = mapComercial(get(idxOwner));
-    const Etapa           = String(get(idxStage) ?? "").trim();
-    const Antiguedad      = idxAging >= 0 ? (() => { const v = get(idxAging); const n = Number(String(v).replace(/[^\d.-]/g, "")); return isFinite(n) ? n : null; })() : null;
-    const Fecha_creacion  = idxCreated >= 0 ? parseDateCell(get(idxCreated)) : null;
-    const Fecha_cierre    = idxClosed  >= 0 ? parseDateCell(get(idxClosed))  : null;
-    const Importe         = idxImporte >= 0 ? toNumber(get(idxImporte)) : null;
-    const Probabilidad    = idxProb    >= 0 ? toNumber(get(idxProb))    : null;
-    const Producto        = idxProd    >= 0 ? String(get(idxProd) || "") : undefined;
-    const Precio_total    = idxPrecioT >= 0 ? toNumber(get(idxPrecioT)) : null;
-    const Cuenta          = idxCuenta  >= 0 ? String(get(idxCuenta) || "") : undefined;
-
-    out.push({ Comercial, Etapa, Antiguedad, Fecha_creacion, Fecha_cierre, Importe, Probabilidad, Producto, Precio_total, Cuenta });
-  }
-  return { rows: out, sheetName, debug: dbg } as const;
-}
-
-function tryParseAnyDetail(wb: XLSX.WorkBook){
-  const errs:string[] = [];
-  const pickCols = (A:any[][]) => {
+  // --- localizar fila de encabezado y columnas clave ---
+  const pickCols = (mat:any[][]) => {
     let headerRow = 0, best = -1;
     let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1;
 
-    for (let r = 0; r < Math.min(50, A.length); r++){
-      const row = A[r] || [];
+    for (let r = 0; r < Math.min(50, mat.length); r++){
+      const row = mat[r] || [];
       let sc = 0, co=-1, cs=-1, cc=-1, cl=-1;
       row.forEach((v:any, c:number) => {
         const h = norm(v);
@@ -965,71 +906,52 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
     return { headerRow, colOwner, colStage, colCreated, colClosed };
   };
 
+  const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
+  if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
+
+  const outClosed:any[] = [];   // filas cerradas (para Sales Cycle "cerradas")
+  const allRows:any[]   = [];   // todas las oportunidades (abiertas+cerradas)
+
+  let carryCom = "";
+  for (let r = headerRow+1; r < A.length; r++){
+    const row = A[r] || [];
+    const line = norm(row.join(" "));
+    if (!line) continue;
+    if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
+
+    // arrastre de comercial
+    const rawCom = row[colOwner];
+    if (rawCom != null && String(rawCom).trim() !== ""){
+      carryCom = String(rawCom).trim();
+      // si es fila "título" (solo trae el comercial), sigue
+      const soloTitulo = row.filter((v:any, c:number)=> c!==colOwner).every(v => String(v??"").trim()==="");
+      if (soloTitulo) continue;
+    }
+    const comercial = carryCom.trim();
+    if (!comercial) continue;
+
+    const stage   = colStage>=0   ? String(row[colStage] ?? "") : "";
+    const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
+    const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
+
+    allRows.push({ comercial, stage, created, closed });
+
+    const isClosed = (!!closed) || CLOSED_RX.test(norm(stage));
+    if (isClosed && created && closed) {
+      outClosed.push({ comercial, created, closed, stage });
+    }
+  }
+
+  return { rows: outClosed, allRows, sheetName } as const;
+}
+
+function tryParseAnyDetail(wb: XLSX.WorkBook){
+  const errs:string[] = [];
   for (const sn of wb.SheetNames){
     try{
       const ws = wb.Sheets[sn]; if (!ws) continue;
-      const A:any[][] = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" }) as any[][];
-      if (!A.length) continue;
-// … ya tienes: const headersRaw = (A[headerRow] || []).slice();
-
-// Índice de IMPORTE en base a distintos nombres posibles
-const possibleAmountHeaders = [
-  "importe", "amount",
-  "precio total", "precio_total", "valor total",
-  "monto", "valor", "total", "precio"
-];
-
-const findIdxHeader = (cands: string[]) => {
-  for (let c = 0; c < headersRaw.length; c++) {
-    const h = norm(headersRaw[c] ?? ""); // usa el norm global ya definido arriba en el archivo
-    // match por igualdad o contiene (para casos como "Total precio")
-    if (cands.some(k => h === k || h.includes(k))) return c;
-  }
-  return -1;
-};
-
-const idxImporte = findIdxHeader(possibleAmountHeaders);
-
-      const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
-      if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
-
-      const rows:any[] = [];       // ← solo CERRADAS con fechas (para Sales Cycle)
-      const allRows:any[] = [];    // ← TODAS las ofertas (para el conteo)
-      let carryCom = "";
-
-      for (let r = headerRow+1; r < A.length; r++){
-        const row = A[r] || [];
-        const line = norm(row.join(" "));
-        if (!line) continue;
-        if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
-
-        // arrastre de comercial
-        const rawCom = row[colOwner];
-        if (rawCom != null && String(rawCom).trim() !== ""){
-          const mapped = mapComercial(rawCom);
-          if (mapped) carryCom = mapped;
-          const soloTitulo = row.filter((v:any, c:number)=> c!==colOwner).every(v => String(v??"").trim()==="");
-          if (soloTitulo) continue;
-        }
-        const comercial = carryCom;
-        if (!comercial) continue;
-
-// recolectar para "todas las ofertas"
-const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
-const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
-const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
-const amount  = idxImporte >= 0 ? toNumber(row[idxImporte]) : 0;
-
-allRows.push({ comercial, stage, created, closed, amount });
-
-        // filas cerradas para Sales Cycle (all / won)
-        const isClosed = (!!closed) || CLOSED_RX.test(norm(stage));
-        if (isClosed && created && closed) {
-          rows.push({ comercial, created, closed, stage });
-        }
-      }
-
-      return { sheetName: sn, rows, allRows };
+      // Si parsea, salimos con esa hoja
+      return parseDetailSheetRobust(ws, sn);
     }catch(e:any){ errs.push(`${sn}: ${e?.message || e}`); }
   }
   throw new Error("DETALLADO: ninguna hoja válida. " + errs.join(" | "));
@@ -1396,30 +1318,27 @@ const resetAll = () => {
 
 async function onDetailFile(f: File) {
   setError("");
-  setInfo(prev => (prev ? prev + "\n" : ""));
   setFileDetailName(f.name);
-
   try {
-    // 1) Leer el Excel de forma robusta
-    const wb = await readWorkbookRobust(f);
-
-    // 2) Parsear DETALLADO (crea filas con comercial, created, closed, stage)
-    const dm = tryParseAnyDetail(wb);
+    const wb = await readWorkbookRobust(f);      // <-- lector robusto
+    const dm = tryParseAnyDetail(wb);            // <-- parser robusto
     setDetail(dm);
 
-    // 3) Construir modelo de OFERTAS (comercial + periodo YM)
-    const om = buildOffersModelFromDetailModel(dm);
-    setOffersModel(om);
-    if (om.periods && om.periods.length) {
-      setOffersPeriod(om.periods[om.periods.length - 1]); // último mes
-    }
+    // (opcional) construir modelo de ofertas por período si ya lo usas
+    const rows = (dm.allRows || []).filter((r:any)=> r?.created instanceof Date)
+      .map((r:any)=> {
+        const d = r.created as Date;
+        const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+        return { comercial: r.comercial, ym };
+      });
+    const periods = Array.from(new Set(rows.map((r:any)=>r.ym))).sort();
+    setOffersModel({ rows, periods });
+    if (periods.length) setOffersPeriod(periods[periods.length-1]);
 
-    // 4) Mensaje informativo
-    setInfo(prev => (prev + `Detalle OK • hoja: ${dm.sheetName}`).trim());
-  } catch (e: any) {
+  } catch (e:any) {
     setDetail(null);
     setOffersModel(null);
-    setError(prev => (prev ? prev + "\n" : "") + `Detalle: ${e?.message || e}`);
+    setError(`Detalle: ${e?.message || e}`);
   }
 }
 
