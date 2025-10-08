@@ -247,8 +247,17 @@ function daysBetween(a: Date, b: Date) {
 }
 
 const fmtCOP = (n: number) => n.toLocaleString("es-CO");
-const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "open", "nuevo", "calificacion", "negociacion", "propuesta"];
+const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "open", "nuevo", "calificacion", "negociacion", "propuesta","QUALIFICATION","NEEDS ANALYSIS", "VALUE PROPOSITION","PERCEPTION ANALYSIS",
+  "ID. DECISION MAKERS","PROSPECTING","PROPOSAL/PRICE QUOTE","NEGOTIATION"];
 const WON_STAGES = ["closed won", "ganad"]; // detectar 'Closed Won' y variantes en español
+const normStage = (s?: string) => (s || '').trim().toUpperCase();
+const isOpenStage = (stage?: string) => {
+  const st = normStage(stage);
+  return st && st !== 'CLOSED WON' && st !== 'CLOSED LOST';
+};
+
+const coverageColor = (p: number) => (p >= 1 ? 'text-green-600' : p >= 0.8 ? 'text-yellow-600' : 'text-red-600');
+const coverageDot   = (p: number) => (p >= 1 ? '●' : p >= 0.8 ? '●' : '●');
 
 // ================= Comerciales: lista fija + mapa =================
 const FIXED_COMERCIALES = [
@@ -706,6 +715,21 @@ function calcPipelineFromPivot(model: any) {
   });
   const total = porComercial.reduce((a: number, x: any) => a + x.pipeline, 0);
   return { total, porComercial };
+}
+
+// Mapa de ofertas abiertas por comercial: { monto, n }  (excluye Closed Won/Lost)
+function openOffersByComercial(detailRows: Array<{ comercial: string; etapa?: string; importe?: number }>) {
+  const m = new Map<string, { monto: number; n: number }>();
+  for (const r of detailRows) {
+    if (!isOpenStage(r.etapa)) continue;
+    const imp = Number(r.importe || 0);
+    if (!imp) continue;
+    const cur = m.get(r.comercial) || { monto: 0, n: 0 };
+    cur.monto += imp;
+    cur.n += 1;
+    m.set(r.comercial, cur);
+  }
+  return m;
 }
 
 function calcWinRateFromPivot(model: any) {
