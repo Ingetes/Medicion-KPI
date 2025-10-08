@@ -879,24 +879,31 @@ function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
   // --- localizar fila de encabezado y columnas clave ---
   const pickCols = (mat:any[][]) => {
     let headerRow = 0, best = -1;
-    let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1;
+    let colOwner = -1, colStage = -1, colCreated = -1, colClosed = -1, colAmount = -1;
 
     for (let r = 0; r < Math.min(50, mat.length); r++){
       const row = mat[r] || [];
-      let sc = 0, co=-1, cs=-1, cc=-1, cl=-1;
+      let sc = 0, co=-1, cs=-1, cc=-1, cl=-1, ca=-1;
       row.forEach((v:any, c:number) => {
         const h = norm(v);
         if (OWNER_KEYS.some(k=> h.includes(k)))  { sc+=3; co=c; }
         if (STAGE_KEYS.some(k=> h.includes(k)))  { sc+=1; cs=c; }
         if (CREATE_KEYS.some(k=> h.includes(k))) { sc+=2; cc=c; }
         if (CLOSE_KEYS.some(k=> h.includes(k)))  { sc+=2; cl=c; }
+        // monto / valor
+        if (
+          h.includes("importe") || h.includes("monto") || h.includes("valor") ||
+          h.includes("precio total") || h.includes("total") && !h.includes("recuento") && !h.includes("count")
+        ) { sc+=1; ca=c; }
       });
-      if (sc > best && (co>=0 || cs>=0)) { best=sc; headerRow=r; colOwner=co; colStage=cs; colCreated=cc; colClosed=cl; }
+      if (sc > best && (co>=0 || cs>=0)) {
+        best=sc; headerRow=r; colOwner=co; colStage=cs; colCreated=cc; colClosed=cl; colAmount=ca;
+      }
     }
-    return { headerRow, colOwner, colStage, colCreated, colClosed };
+    return { headerRow, colOwner, colStage, colCreated, colClosed, colAmount };
   };
 
-  const { headerRow, colOwner, colStage, colCreated, colClosed } = pickCols(A);
+  const { headerRow, colOwner, colStage, colCreated, colClosed, colAmount } = pickCols(A);
   if (colOwner < 0) throw new Error("No se encontró columna de Propietario/Comercial");
 
   const outClosed:any[] = [];   // filas cerradas (para Sales Cycle "cerradas")
@@ -923,8 +930,9 @@ function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
     const stage   = colStage>=0   ? String(row[colStage] ?? "") : "";
     const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
     const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
+    const amount  = colAmount>=0  ? toNumber(row[colAmount]) : 0; // ← NUEVO
 
-    allRows.push({ comercial, stage, created, closed });
+    allRows.push({ comercial, stage, created, closed, amount });  // ← guarda amount
 
     const isClosed = (!!closed) || CLOSED_RX.test(norm(stage));
     if (isClosed && created && closed) {
