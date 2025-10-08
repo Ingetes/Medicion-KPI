@@ -1456,16 +1456,13 @@ const openAmountsByComercial = React.useMemo(() => {
   return m;
 }, [detail]);
 
-// === MONTO DE OFERTAS ABIERTAS + PERDIDAS por comercial (excluye solo Won) ===
+// === MONTO DE TODAS LAS OFERTAS (abiertas + perdidas + ganadas) por comercial ===
 const openPlusLostAmountsByComercial = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = detail?.allRows || [];
 
   for (const r of rows) {
-    const st = String(r.stage || "").toUpperCase();
-    const isWon = /CLOSED\s*WON|GANAD/.test(st);
-    if (isWon) continue; // <- excluimos SOLO ganadas (Closed Won)
-
+    // tomamos todas las etapas, sin excluir ninguna
     const imp = Number((r as any).amount || 0);
     if (!imp) continue;
 
@@ -1477,6 +1474,7 @@ const openPlusLostAmountsByComercial = React.useMemo(() => {
   }
   return m;
 }, [detail]);
+
 
 const ScreenPipeline = () => {
   if (!pivot) {
