@@ -206,6 +206,15 @@ function onlySelected<T extends { comercial: string }>(arr: T[], selected: strin
   return selected === "ALL" ? arr : arr.filter(r => r.comercial === selected);
 }
 
+// normaliza nombres: quita tildes, compacta espacios y pone mayúsculas
+const nameKey = (s: string) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")  // sin tildes
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+
 const parseDateCell = (val: any) => {
   if (val == null || val === "") return null;
   // Excel serial
@@ -1428,7 +1437,6 @@ const openAmountsByComercial = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = detail?.allRows || [];
   for (const r of rows) {
-    // abierta = no 'Closed Won' ni 'Closed Lost'
     const st = String(r.stage || "").toUpperCase();
     const isClosed = st === "CLOSED WON" || st === "CLOSED LOST";
     if (isClosed) continue;
@@ -1436,9 +1444,10 @@ const openAmountsByComercial = React.useMemo(() => {
     const imp = Number((r as any).amount || 0);
     if (!imp) continue;
 
-    m.set(r.comercial, (m.get(r.comercial) || 0) + imp);
+const k = nameKey(comercial);
+m.set(k, (m.get(k) || 0) + valor);
   }
-  return m; // Map<comercial, montoAbierto>
+  return m;
 }, [detail]);
 
 const ScreenPipeline = () => {
