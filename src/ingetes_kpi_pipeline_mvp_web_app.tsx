@@ -251,9 +251,9 @@ const OPEN_STAGES = ["prospect", "qualification", "negotiation", "proposal", "op
   "ID. DECISION MAKERS","PROSPECTING","PROPOSAL/PRICE QUOTE","NEGOTIATION"];
 const WON_STAGES = ["closed won", "ganad"]; // detectar 'Closed Won' y variantes en español
 const normStage = (s?: string) => (s || '').trim().toUpperCase();
-const isOpenStage = (stage?: string) => {
-  const st = normStage(stage);
-  return st && st !== 'CLOSED WON' && st !== 'CLOSED LOST';
+const isOpenStage = (stage: string) => {
+  const s = String(stage || "").toLowerCase();
+  return !(s === "closed won" || s === "closed lost");
 };
 
 const coverageColor = (p: number) => (p >= 1 ? 'text-green-600' : p >= 0.8 ? 'text-yellow-600' : 'text-red-600');
@@ -946,6 +946,18 @@ function parseDetailSheetRobust(ws: XLSX.WorkSheet, sheetName: string) {
 
 function tryParseAnyDetail(wb: XLSX.WorkBook){
   const errs:string[] = [];
+// Normalizador de encabezados
+const norm = (x: any) => String(x ?? "").trim().toLowerCase();
+
+// Encuentra la columna de Importe / Amount / Precio total / etc.
+const possibleAmountHeaders = [
+  "importe", "amount",
+  "precio total", "precio_total", "valor total",
+  "monto", "valor", "total", "precio"
+];
+
+// header es tu fila de encabezado, p.ej. array con los títulos de columna
+const idxImporte = header.findIndex(h => possibleAmountHeaders.includes(norm(h)));
 
   const pickCols = (A:any[][]) => {
     let headerRow = 0, best = -1;
@@ -1000,8 +1012,9 @@ function tryParseAnyDetail(wb: XLSX.WorkBook){
 const stage   = colStage>=0   ? String(row[colStage] ?? "")   : "";
 const created = colCreated>=0 ? parseExcelDate(row[colCreated]) : null;
 const closed  = colClosed>=0  ? parseExcelDate(row[colClosed])  : null;
-const amount  = idxImporte>=0 ? toNumber(row[idxImporte]) : 0;
-
+const amount  = idxImporte >= 0 ? toNumber(row[idxImporte]) : 0;
+allRows.push({ comercial, stage, created, closed, amount });
+        
 // ahora guardamos también el monto
 allRows.push({ comercial, stage, created, closed, amount });
 
@@ -1200,9 +1213,10 @@ const [savingMetas, setSavingMetas] = useState(false);
 // ===== Metas para KPIs (por año desde Sheet) =====
 type MetaRecordForYear = {
   comercial: string;
-  metaAnual: number;
-  metaOfertas: number;
-  metaVisitas: number;
+  stage: string;
+  created: Date | null;
+  closed: Date | null;
+  amount: number; // nuevo
 };
 const [metasByYear, setMetasByYear] = useState<Record<number, MetaRecordForYear[]>>({});
 const normalizeName = (s: string) =>
