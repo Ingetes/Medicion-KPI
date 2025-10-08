@@ -1583,7 +1583,7 @@ const ScreenPipeline = () => {
     <div>{fmtCOP(row.goal)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold">Cerrado</div>
+    <div className="font-semibold">Ganado</div>
     <div>{fmtCOP(row.wonCOP)}</div>
   </div>
   <div className="bg-white p-2 rounded-lg border text-center">
