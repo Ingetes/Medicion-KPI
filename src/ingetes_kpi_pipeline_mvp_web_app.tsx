@@ -1655,39 +1655,54 @@ const kpi = React.useMemo(
                 {fmtCOP(row.needQuote)}
               </span>
             </div>
-<div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-700 mt-1">
-  <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold text-base md:text-lg">Meta anual</div>
-<div className="text-2xl font-extrabold text-gray-900">
-  {fmtCOP(row.goal)}
-</div>
+<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+  {/* Meta anual */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(row.goal)}
+    </div>
   </div>
-  <div className="bg-white p-2 rounded-lg border text-center">
-    <div className="font-semibold text-base md:text-lg">Ofertas ganadas</div>
-    <div className="text-2xl font-extrabold text-gray-900">
-  {fmtCOP(row.wonCOP)}
-</div>
+
+  {/* Ofertas ganadas */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(row.wonCOP)}
+    </div>
   </div>
-  <div className="bg-white p-2 rounded-lg border text-center">
-        <div className="font-semibold text-base md:text-lg">Faltante para cumplimiento</div>
-    <div>{fmtCOP(row.remaining)}</div>
+
+  {/* Faltante para cumplimiento */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(row.remaining)}
+    </div>
   </div>
-  <div className="bg-white p-2 rounded-lg border text-center">
-        <div className="font-semibold text-base md:text-lg">Necesita cotizar</div>
-    <div className="text-2xl font-extrabold text-gray-900">
-  {fmtCOP(row.needQuote)}
-</div>
+
+  {/* Necesita cotizar */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(row.needQuote)}
+    </div>
   </div>
-  {/* NUEVO */}
-<div className="bg-white p-2 rounded-lg border text-center">
-  <div className="font-semibold text-base md:text-lg">Ofertas abiertas</div>
-  <div>{fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
-</div>
-{/* Tarjeta: Abiertas + perdidas */}
-<div className="bg-white p-2 rounded-lg border text-center">
- <div className="font-semibold text-base md:text-lg">Abiertas + perdida</div>
-  <div>{fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}</div>
-</div>
+
+  {/* Ofertas abiertas */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
+    </div>
+  </div>
+
+  {/* Abiertas + perdidas */}
+  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+    <div className="text-base md:text-lg font-semibold text-gray-600">Abiertas + perdidas</div>
+    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+      {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
+    </div>
+  </div>
 </div>
 
 {/* Barra: abiertas vs lo que necesita cotizar */}
