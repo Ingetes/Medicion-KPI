@@ -1130,7 +1130,8 @@ export default function IngetesKPIApp() {
   const [info, setInfo] = useState("");
   const [winRateTarget, setWinRateTarget] = useState(30);
   const [cycleTarget, setCycleTarget] = useState(45);
-  const [assumedWinRate, setAssumedWinRate] = useState<number>(20); // %
+  const [assumedWinRate, setAssumedWinRate] = useState<number>(20); // 👈 aquí sí
+  const [settingsYear, setSettingsYear] = useState<number>(new Date().getFullYear());
 
 // ===== Ajustes (metas por comercial) =====
 const [showSettings, setShowSettings] = useState(false);
