@@ -1130,6 +1130,7 @@ export default function IngetesKPIApp() {
   const [info, setInfo] = useState("");
   const [winRateTarget, setWinRateTarget] = useState(30);
   const [cycleTarget, setCycleTarget] = useState(45);
+  const [assumedWinRate, setAssumedWinRate] = useState<number>(20); // %
 
 // ===== Ajustes (metas por comercial) =====
 const [showSettings, setShowSettings] = useState(false);
@@ -1493,17 +1494,19 @@ const ScreenPipeline = () => {
 
   // Tomamos metas del año que usas en Ajustes (settingsYear)
   // y una tasa fija del 20% (0.20)
-  const WIN_RATE = 0.20;
+  const WIN_RATE = // Win Rate asumido (editable desde UI)
+const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100; // 0..1
+
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
 
   // Asegura que tenemos las metas de ese año
   React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
 
   // Calcula: won (cerrado), remaining (faltante) y needQuote (faltante/0.2)
-  const kpi = React.useMemo(
-    () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
-    [pivot, goalFor]
-  );
+const kpi = React.useMemo(
+  () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
+  [pivot, goalFor, WIN_RATE]
+);
 
   // Comodines seleccionados
   const selected = React.useMemo(() => {
@@ -1533,9 +1536,20 @@ const ScreenPipeline = () => {
     <div className="text-base text-gray-700 font-semibold">
       Año (Sheet): <b>{settingsYear}</b>
     </div>
-    <div className="text-base text-gray-700 font-semibold md:ml-auto">
-      Win Rate asumido: <b>20%</b>
-    </div>
+<div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
+  Win Rate asumido:
+  <input
+    type="number"
+    min={1}
+    max={100}
+    step={1}
+    className="w-20 border rounded-lg px-2 py-1 text-sm text-right"
+    value={assumedWinRate}
+    onChange={(e) => setAssumedWinRate(Number(e.target.value || 0))}
+    title="Porcentaje de conversión esperado de cotizaciones a ganadas"
+  />
+  <span>%</span>
+</div>
   </div>
 
   {(() => {
@@ -2240,7 +2254,7 @@ const ScreenAttainment = () => {
   // ================== Construir KPI desde el pivot ==================
   type RowAtt = { comercial: string; wonCOP: number; goal: number; pct: number };
 
-  const kpi = React.useMemo(() => {
+   win rate <b>20%() => {
     // pivot.rows: [{ comercial, values: { Etapa1:{sum}, Etapa2:{sum} ... } }, ...]
     const porComercial: RowAtt[] = pivot.rows.map((r: any) => {
       // Sumar solo etapas ganadas (Closed Won / Ganada)
