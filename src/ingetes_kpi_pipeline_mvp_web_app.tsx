@@ -1645,14 +1645,6 @@ const kpi = React.useMemo(
                 {i + 1}. {row.comercial}
               </div>
             </div>
-
-            {/* Valores principales */}
-            <div className="text-sm text-gray-800">
-              <b>Debe cotizar:</b>{" "}
-              <span className="text-gray-900 font-semibold">
-                {fmtCOP(row.needQuote)}
-              </span>
-            </div>
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
   {/* Meta anual */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
@@ -1712,7 +1704,6 @@ const kpi = React.useMemo(
   return (
     <div className="mt-3">
 <div className="flex justify-between text-xs text-gray-500 mb-1">
-  <span>Avance (abiertas vs necesita)</span>
   <span className="flex items-center gap-1">
     {pctOpen}% 
     <span className={`${coverageColor(row.needQuote > 0 ? (openAmt / row.needQuote) : 0)} text-lg leading-none`}>●</span>
