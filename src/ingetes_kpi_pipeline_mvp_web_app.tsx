@@ -1659,7 +1659,7 @@ const kpi = React.useMemo(
   {/* Meta anual */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(row.goal)}
     </div>
   </div>
@@ -1667,7 +1667,7 @@ const kpi = React.useMemo(
   {/* Ofertas ganadas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(row.wonCOP)}
     </div>
   </div>
@@ -1675,7 +1675,7 @@ const kpi = React.useMemo(
   {/* Faltante para cumplimiento */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(row.remaining)}
     </div>
   </div>
@@ -1683,7 +1683,7 @@ const kpi = React.useMemo(
   {/* Necesita cotizar */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(row.needQuote)}
     </div>
   </div>
@@ -1691,7 +1691,7 @@ const kpi = React.useMemo(
   {/* Ofertas abiertas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
     </div>
   </div>
@@ -1699,7 +1699,7 @@ const kpi = React.useMemo(
   {/* Abiertas + perdidas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
     <div className="text-base md:text-lg font-semibold text-gray-600">Abiertas + perdidas</div>
-    <div className="mt-1 text-3xl md:text-4xl font-extrabold tabular-nums text-gray-900">
+<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
     </div>
   </div>
