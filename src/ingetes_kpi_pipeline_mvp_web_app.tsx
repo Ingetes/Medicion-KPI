@@ -1432,27 +1432,26 @@ const cycleData = useMemo(() => {
     </header>
   );
 
-// === monto de ofertas ABIERTAS (incluye también las perdidas) por comercial ===
+// === monto de ofertas ABIERTAS por comercial (normalizado) ===
 const openAmountsByComercial = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = detail?.allRows || [];
 
   for (const r of rows) {
-    // Solo EXCLUIMOS las ganadas (Closed Won / Ganada). El resto cuenta:
-    // - Abiertas (cualquier etapa que no sea Closed Won)
-    // - Perdidas (Closed Lost / Perdida)
+    // excluir cerradas (Closed Won / Closed Lost / Ganada / Perdida)
     const st = String(r.stage || "").toUpperCase();
-    const isWon = /CLOSED\s*WON|GANAD/.test(st); // <- solo ganadas
-    if (isWon) continue;
+    const isClosed = /CLOSED\s*WON|CLOSED\s*LOST|GANAD|PERDID/.test(st);
+    if (isClosed) continue;
 
     const imp = Number((r as any).amount || 0);
     if (!imp) continue;
 
+    // normaliza el comercial a tu lista fija
     const com = mapComercial(r.comercial);
     if (!com) continue;
 
-    const key = nameKey(com);
-    m.set(key, (m.get(key) || 0) + imp);
+    const key = nameKey(com);                // clave canónica (sin tildes, mayús)
+    m.set(key, (m.get(key) || 0) + imp);     // acumula monto abierto
   }
   return m;
 }, [detail]);
