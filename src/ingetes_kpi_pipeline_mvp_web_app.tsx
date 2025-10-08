@@ -1696,7 +1696,7 @@ const kpi = React.useMemo(
 
   {/* Abiertas + perdidas */}
   <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Abiertas + perdidas</div>
+    <div className="text-base md:text-lg font-semibold text-gray-600">Total en ofertas</div>
 <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-900">
       {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
     </div>
