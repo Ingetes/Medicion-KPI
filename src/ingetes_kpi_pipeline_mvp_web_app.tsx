@@ -740,6 +740,41 @@ function calcAttainmentFromPivot(model: any, goalFor: (comercial: string) => num
   return { total: { pct: totalPct, wonCOP: agg.wonCOP, goal: agg.goal }, porComercial };
 }
 
+// Necesidad de cotización para cumplir meta suponiendo win rate fijo (p.ej. 20%)
+function calcForecastNeededFromPivot(
+  model: any,
+  goalFor: (comercial: string) => number,
+  winRate: number // ej: 0.20
+) {
+  type RowF = { comercial: string; wonCOP: number; goal: number; remaining: number; needQuote: number };
+
+  const porComercial: RowF[] = model.rows.map((r: any) => {
+    // Sumar solo etapas ganadas (Closed Won / Ganada)
+    let wonCOP = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const s = String(stage).toLowerCase();
+      if (s.includes("closed won") || s.includes("ganad")) {
+        wonCOP += Number((agg as any)?.sum || 0);
+      }
+    }
+    const goal = Math.max(0, goalFor(r.comercial) || 0);
+    const remaining = Math.max(0, goal - wonCOP);
+    const needQuote = winRate > 0 ? Math.ceil(remaining / winRate) : 0;
+    return { comercial: r.comercial, wonCOP, goal, remaining, needQuote };
+  });
+
+  // Totales compañía
+  const agg = porComercial.reduce(
+    (a, x) => ({ wonCOP: a.wonCOP + x.wonCOP, goal: a.goal + x.goal, remaining: a.remaining + x.remaining, needQuote: a.needQuote + x.needQuote }),
+    { wonCOP: 0, goal: 0, remaining: 0, needQuote: 0 }
+  );
+
+  // Ordena por necesidad de cotización desc
+  porComercial.sort((a, b) => b.needQuote - a.needQuote);
+
+  return { porComercial, total: agg };
+}
+
 function findHeaderPosition(A:any[][]) {
   let headerRow = 0, propietarioCol = 0, best = -1;
   for (let r=0; r<Math.min(40, A.length); r++) {
@@ -1428,39 +1463,107 @@ const cycleData = useMemo(() => {
     </header>
   );
 
-  const ScreenPipeline = () => {
-    const data = useMemo(() => pipeline, [pipeline]);
-    const selected = useMemo(() => {
-      if (!pivot) return 0; if (selectedComercial === "ALL") return data.total; const row = data.porComercial.find(r => r.comercial === selectedComercial); return row ? row.pipeline : 0;
-    }, [pivot, data, selectedComercial]);
-    const max = useMemo(() => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.pipeline), 0) || 1, [data]);
+const ScreenPipeline = () => {
+  if (!pivot) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <BackBar title="KPI • Pipeline (COP)" />
-        <main className="max-w-6xl mx-auto p-4 space-y-6">
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
-    <div className="text-xs text-gray-500 md:ml-auto">
-      Etapas: Qualification · Needs Analysis · Proposal · Negotiation
-    </div>
-  </div>
-
-  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <StatCard label="Pipeline (compañía)">$ {fmtCOP(data.total)}</StatCard>
-    <StatCard label="Del comercial seleccionado">$ {fmtCOP(selected)}</StatCard>
-    <StatCard label="Participación del seleccionado">
-      {(() => {
-        const pct = data.total > 0 ? Math.round((selected / data.total) * 100) : 0;
-        return <span>{pct}%</span>;
-      })()}
-    </StatCard>
-  </div>
-</section>
+        <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
+        <main className="max-w-6xl mx-auto p-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            Carga primero el archivo <b>RESUMEN</b> para ver este KPI.
+          </div>
         </main>
       </div>
     );
-  };
+  }
+
+  // Tomamos metas del año que usas en Ajustes (settingsYear)
+  // y una tasa fija del 20% (0.20)
+  const WIN_RATE = 0.20;
+  const goalFor = (com: string) => metaAnualFor(com, settingsYear);
+
+  // Asegura que tenemos las metas de ese año
+  React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
+
+  // Calcula: won (cerrado), remaining (faltante) y needQuote (faltante/0.2)
+  const kpi = React.useMemo(
+    () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
+    [pivot, goalFor]
+  );
+
+  // Comodines seleccionados
+  const selected = React.useMemo(() => {
+    if (selectedComercial === "ALL") return null;
+    return kpi.porComercial.find(r => r.comercial === selectedComercial) ||
+           { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 };
+  }, [kpi, selectedComercial]);
+
+  const fmtCOP = (n: number) => (Number(n)||0).toLocaleString("es-CO", { style:"currency", currency:"COP", maximumFractionDigits:0 });
+
+  // Para barras
+  const maxBar = React.useMemo(() => {
+    const arr = onlySelected(kpi.porComercial, selectedComercial);
+    return Math.max(kpi.total.needQuote || 0, ...(arr.map(r => r.needQuote || 0)), 1);
+  }, [kpi, selectedComercial]);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
+      <main className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* Header */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+            <div className="text-sm text-gray-500">Año (Sheet): <b>{settingsYear}</b></div>
+            <div className="text-sm text-gray-500 md:ml-auto">Win Rate asumido: <b>20%</b></div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Faltante (compañía)">
+              {fmtCOP(kpi.total.remaining)}
+            </StatCard>
+            <StatCard label="Cotización necesaria (compañía)">
+              {fmtCOP(kpi.total.needQuote)}
+            </StatCard>
+            <StatCard label="Del comercial seleccionado">
+              {selectedComercial === "ALL"
+                ? "—"
+                : `${fmtCOP(selected?.needQuote || 0)} (faltante: ${fmtCOP(selected?.remaining || 0)})`}
+            </StatCard>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
+            Se usa el cerrado <b>(Closed Won)</b> desde el archivo RESUMEN y la meta anual desde el Sheet.
+          </div>
+        </section>
+
+        {/* Ranking */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="mb-3 font-semibold">Ranking por comercial (cotización necesaria)</div>
+          <div className="space-y-2">
+            {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
+              const pct = Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100);
+              return (
+                <div key={row.comercial} className="text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{i + 1}. {row.comercial}</div>
+                    <div className="tabular-nums text-gray-900">
+                      {fmtCOP(row.needQuote)} <span className="text-gray-500"> (faltante: {fmtCOP(row.remaining)}, meta: {fmtCOP(row.goal)}, cerrado: {fmtCOP(row.wonCOP)})</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded mt-1">
+                    <div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
 
   const ScreenWinRate = () => {
     const data = useMemo(() => winRate, [winRate]);
@@ -2284,8 +2387,8 @@ const ScreenAttainment = () => {
         {/* Tarjetas de acceso a KPIs */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white rounded-xl border flex flex-col">
-            <div className="font-semibold">📊 Pipeline (COP)</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN</p>
+          <div className="font-semibold">📊 Forecast para cumplir meta</div>
+          <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN + Meta anual + Win Rate 20%</p>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_PIPELINE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
