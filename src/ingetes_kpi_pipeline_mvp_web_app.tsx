@@ -1712,7 +1712,6 @@ const kpi = React.useMemo(
 
   <div className="text-xs text-gray-500 mt-3">
     Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
-    Se usa el cerrado <b>(Closed Won)</b> desde el archivo RESUMEN y la meta anual desde el Sheet.
   </div>
 </section>
 
