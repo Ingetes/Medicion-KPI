@@ -1,7 +1,9 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
 export default defineConfig({
-  plugins: [react()],
-  base: '/Medicion-KPI/',   // <-- usa EXACTAMENTE el nombre de tu repo
+  base: '/Medicion-KPI/',
+  build: {
+    sourcemap: false,      // evita subir mapas (pesan)
+    cssCodeSplit: true,
+    brotliSize: false,     // evita cálculo de tamaños
+    chunkSizeWarningLimit: 1200
+  }
 })
