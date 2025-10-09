@@ -736,6 +736,35 @@ function calcWinRateFromPivot(model: any) {
   return { total: { winRate: totalWinRate, won: tot.won, total: tot.total }, porComercial };
 }
 
+function calcWinRateBudgetFromPivot(model: any) {
+  // Win rate por presupuesto = (valor ganadas) / (valor total)
+  const porComercial = model.rows.map((r: any) => {
+    let totalValue = 0;
+    let wonValue   = 0;
+
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const sum = Number((agg as any)?.sum || 0);
+      totalValue += sum;
+
+      const st = norm(String(stage));
+      if (st.includes("closed won") || st.includes("ganad")) {
+        wonValue += sum;
+      }
+    }
+
+    const winRate = totalValue > 0 ? (wonValue / totalValue) * 100 : 0;
+    return { comercial: r.comercial, won: wonValue, total: totalValue, winRate };
+  });
+
+  const totalAgg = porComercial.reduce(
+    (a, x) => ({ won: a.won + x.won, total: a.total + x.total }),
+    { won: 0, total: 0 }
+  );
+  const totalWinRate = totalAgg.total > 0 ? (totalAgg.won / totalAgg.total) * 100 : 0;
+
+  return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
+}
+
 function calcAttainmentFromPivot(model: any, goalFor: (comercial: string) => number) {
   const porComercial = model.rows.map((r: any) => {
     let wonCOP = 0;
@@ -1734,10 +1763,19 @@ const kpi = React.useMemo(
 
   const ScreenWinRate = () => {
     const [mode, setMode] = React.useState<"cantidad" | "presupuesto">("cantidad");
-    const data = useMemo(() => winRate, [winRate]);
-    const selected = useMemo(() => {
-      if (!pivot) return 0; if (selectedComercial === "ALL") return data.total.winRate; return data.porComercial.find(r => r.comercial === selectedComercial)?.winRate || 0;
-    }, [pivot, data, selectedComercial]);
+const data = useMemo(() => {
+  if (!pivot) {
+    return { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] as any[] };
+  }
+  return mode === "cantidad"
+    ? calcWinRateFromPivot(pivot)
+    : calcWinRateBudgetFromPivot(pivot);
+}, [pivot, mode]);
+const selected = useMemo(() => {
+  if (!pivot) return 0; 
+  if (selectedComercial === "ALL") return data.total.winRate; 
+  return data.porComercial.find(r => r.comercial === selectedComercial)?.winRate || 0;
+}, [pivot, data, selectedComercial]);
     const max = useMemo(() => {
   const arr = onlySelected(data.porComercial, selectedComercial);
   return Math.max(data.total.winRate || 0, ...(arr.map((row: any) => row.winRate || 0)));
@@ -1746,25 +1784,6 @@ const kpi = React.useMemo(
     return (
       <div className="min-h-screen bg-gray-50">
         <BackBar title="KPI • Tasa de Cierre (Win Rate)" />
-<div className="flex justify-center gap-3 mb-4">
-  <button
-    onClick={() => setMode("cantidad")}
-    className={`px-3 py-2 rounded-lg border text-sm transition ${
-      mode === "cantidad" ? "bg-blue-600 text-white" : "bg-white hover:bg-gray-50"
-    }`}
-  >
-    Por cantidad
-  </button>
-
-  <button
-    onClick={() => setMode("presupuesto")}
-    className={`px-3 py-2 rounded-lg border text-sm transition ${
-      mode === "presupuesto" ? "bg-blue-600 text-white" : "bg-white hover:bg-gray-50"
-    }`}
-  >
-    Por presupuesto
-  </button>
-</div>
         <main className="max-w-6xl mx-auto p-4 space-y-6">
 <section className="p-4 bg-white rounded-xl border">
   <div className="flex flex-col md:flex-row md:items-center md:gap-4">
@@ -1818,6 +1837,25 @@ const kpi = React.useMemo(
           {pivot && (
             <section className="p-4 bg-white rounded-xl border">
               <div className="mb-3 font-semibold">Win Rate por comercial</div>
+{/* Selector de modo (mismo look que Sales Cycle) */}
+<div className="flex items-center justify-center mb-4">
+  <div className="inline-flex rounded-lg border overflow-hidden">
+    <button
+      className={`px-3 py-1 text-sm ${mode === "cantidad" ? "bg-gray-900 text-white" : "bg-white"}`}
+      onClick={() => setMode("cantidad")}
+      title="Win rate por cantidad (# ganadas / # totales)"
+    >
+      Por cantidad
+    </button>
+    <button
+      className={`px-3 py-1 text-sm border-l ${mode === "presupuesto" ? "bg-gray-900 text-white" : "bg-white"}`}
+      onClick={() => setMode("presupuesto")}
+      title="Win rate por presupuesto ($ ganadas / $ totales)"
+    >
+      Por presupuesto
+    </button>
+  </div>
+</div>
               <div className="space-y-2">
                 {onlySelected(data.porComercial, selectedComercial).map((row: any) => {
                   const pct = Math.round((row.winRate / (max || 1)) * 100);
