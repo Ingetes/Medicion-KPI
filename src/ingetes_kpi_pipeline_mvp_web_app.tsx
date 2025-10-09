@@ -184,6 +184,15 @@ const toNumber = (v:any) => {
   return isFinite(n) ? n : 0;
 };
 
+// --- Clasificación de eventos por texto (Asunto/Tipo) ---
+function classifyEvent(asunto?: string, tipo?: string): "llamadas" | "visitas" | "reuniones" | "otros" {
+  const s = `${norm(asunto || "")} ${norm(tipo || "")}`;
+  if (/(llamad|call|telefono|telef)/.test(s)) return "llamadas";
+  if (/(reunion|reunión|meeting)/.test(s)) return "reuniones";
+  if (/(visita|visit)/.test(s)) return "visitas";
+  return "otros";
+}
+
 // Palabras clave para detectar columnas
 const OWNER_KEYS  = ["propietario","owner","comercial","vendedor","ejecutivo"];
 const STAGE_KEYS  = ["etapa","stage","estado"];
@@ -410,6 +419,8 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento");
   const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
   const idxTip = findIdx("tipo visita","tipo de visita","modalidad","presencial","virtual","canal");
+  const idxAsu = findIdx("asunto","subject","título","titulo","title","tema","descripcion","descripción");
+
 
   if (idxCom < 0 || idxFec < 0) {
     throw new Error(`VISITAS: faltan columnas (Comercial y Fecha) en hoja ${sheetName}`);
@@ -462,7 +473,11 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const cliente = idxCli >= 0 ? String(row[idxCli] ?? "").trim() : "";
     const tipo    = idxTip >= 0 ? String(row[idxTip] ?? "").trim() : "";
 
-    rows.push({ comercial, fecha: d, ym, cliente, tipo });
+    const asunto = idxAsu >= 0 ? String(row[idxAsu] ?? "").trim() : "";
+    const kind   = classifyEvent(asunto, tipo); // "llamadas" | "visitas" | "reuniones" | "otros"
+
+    rows.push({ comercial, fecha: d, ym, cliente, tipo, asunto, kind });
+
   }
 
   if (!rows.length) throw new Error(`VISITAS: sin filas válidas en ${sheetName}`);
@@ -2141,33 +2156,60 @@ const selected = useMemo(() => {
 };
 
 // === ScreenVisits ===
+// === ScreenVisits ===
 const ScreenVisits = () => {
-  const data = visitsKPI;
+  // Modo de conteo
+  const [visMode, setVisMode] = React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
 
-  // Visitas del comercial seleccionado en el período activo
-const selectedCount = React.useMemo(() => {
-  if (!visitsModel) return 0;
-  if (selectedComercial === "ALL") return data.total;
-  const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
-  return row ? row.count : 0;
-}, [visitsModel, data, selectedComercial]);
+  // Filas del período seleccionado
+  const periodRows = React.useMemo(() => {
+    if (!visitsModel) return [] as any[];
+    const periods: string[] = visitsModel.periods || [];
+    const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length - 1] || "");
+    return visitsModel.rows.filter((r: any) => r.ym === sel);
+  }, [visitsModel, visitsPeriod]);
 
-  // Año del período (formato YYYY-MM)
+  // Agregación por modo (cuenta por comercial SOLO del tipo elegido)
+  const data = React.useMemo(() => {
+    const by = new Map<string, number>();
+    for (const r of periodRows) {
+      if ((r.kind || "otros") !== visMode) continue;
+      by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
+    }
+    const porComercial = Array.from(by.entries())
+      .map(([comercial, count]) => ({ comercial, count }))
+      .sort((a, b) => b.count - a.count);
+    const total = porComercial.reduce((a, x) => a + x.count, 0);
+
+    // descubre el período activo (si hay)
+    const sel = (visitsModel?.periods || []).includes(visitsPeriod)
+      ? visitsPeriod
+      : ((visitsModel?.periods || []).slice(-1)[0] || "");
+
+    return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
+  }, [periodRows, visMode, visitsModel, visitsPeriod]);
+
+  // Conteo del comercial seleccionado
+  const selectedCount = React.useMemo(() => {
+    if (selectedComercial === "ALL") return data.total;
+    return data.porComercial.find((r: any) => r.comercial === selectedComercial)?.count ?? 0;
+  }, [data, selectedComercial]);
+
+  // Año del período para metas
   const yearForVisits = React.useMemo(
     () => Number((data?.period || "").slice(0, 4)) || new Date().getFullYear(),
     [data?.period]
   );
 
-  // Metas del Sheet en un mapa por comercial (normalizado)
+  // Metas (solo aplican cuando el modo es "visitas")
   const [metasMap, setMetasMap] = React.useState<Map<string, any>>(new Map());
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // fetchMetas(year) ya existe en tu archivo y devuelve { year, metas }
         const { metas } = await fetchMetas(yearForVisits);
         const map = new Map<string, any>();
-        metas.forEach((m: any) => map.set(normName(m.comercial), m)); // normName ya existe
+        metas.forEach((m: any) => map.set(normName(m.comercial), m));
         if (!cancelled) setMetasMap(map);
       } catch {
         if (!cancelled) setMetasMap(new Map());
@@ -2176,69 +2218,120 @@ const selectedCount = React.useMemo(() => {
     return () => { cancelled = true; };
   }, [yearForVisits]);
 
-  // Meta de visitas del comercial seleccionado (desde Sheet)
-  const targetSelected = metasMap.get(normName(selectedComercial))?.metaVisitas ?? 0;
+  // Meta mensual (solo si el modo es "visitas"); en llamadas/reuniones se muestra "—"
+  const targetSelected = visMode === "visitas"
+    ? (metasMap.get(normName(selectedComercial))?.metaVisitas ?? 0)
+    : 0;
 
-  // Para barra (solo visual)
+  // Para barra visual
   const max = React.useMemo(
     () => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0) || 1,
     [data]
   );
 
+  // Etiquetas bonitas
+  const labelForMode = visMode === "llamadas" ? "Llamadas"
+                      : visMode === "reuniones" ? "Reuniones"
+                      : "Visitas";
+
   return (
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+        <section className="p-4 bg-white rounded-xl border">
+          {/* Selector de período */}
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-sm text-gray-500">
+              Comercial: <b>{selectedComercial}</b>
+            </div>
 
-    <div className="text-sm text-gray-500">Periodo:
-      <select
-        className="ml-2 border rounded px-2 py-1 text-sm"
-        value={visitsPeriod}
-        onChange={(e) => setVisitsPeriod(e.target.value)}
-      >
-        {(data.periods || []).map((p: string) => <option key={p} value={p}>{p}</option>)}
-      </select>
-    </div>
+            <div className="text-sm text-gray-500">
+              Periodo:
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={visitsPeriod}
+                onChange={(e) => setVisitsPeriod(e.target.value)}
+              >
+                {(data.periods || []).map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
 
-    <div className="text-sm text-gray-500">
-      Meta mensual (Sheet): <b className="tabular-nums">{targetSelected}</b>
-    </div>
-  </div>
+            {/* Selector de modo (igual estilo que Ciclo de ventas) */}
+            <div className="md:ml-auto">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${visMode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setVisMode("llamadas")}
+                  title="Total de llamadas (según Asunto)"
+                >
+                  Llamadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${visMode === "visitas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setVisMode("visitas")}
+                  title="Total de visitas (según Asunto)"
+                >
+                  Visitas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${visMode === "reuniones" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setVisMode("reuniones")}
+                  title="Total de reuniones (según Asunto)"
+                >
+                  Reuniones
+                </button>
+              </div>
+            </div>
+          </div>
 
-  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <StatCard label="Visitas del período (compañía)">{data.total}</StatCard>
-    <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
-    <StatCard label="Cumplimiento (vs meta del Sheet)">
-      {(() => {
-        const pct = targetSelected > 0 ? Math.round((selectedCount / targetSelected) * 100) : (selectedCount > 0 ? 100 : 100);
-        const st  = offerStatus(selectedCount, targetSelected);
-        return (
-          <span className="flex items-center gap-2">
-            <span>{pct}% ({selectedCount}/{targetSelected})</span>
-            <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-          </span>
-        );
-      })()}
-    </StatCard>
-  </div>
+          {/* Tarjetas superiores */}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
+            <StatCard label={`Del comercial seleccionado`}>{selectedCount}</StatCard>
+            <StatCard label={visMode === "visitas" ? "Cumplimiento (vs meta del Sheet)" : "Meta"}>
+              {visMode === "visitas" ? (
+                (() => {
+                  const pct = targetSelected > 0
+                    ? Math.round((selectedCount / targetSelected) * 100)
+                    : (selectedCount > 0 ? 100 : 100);
+                  const st = offerStatus(selectedCount, targetSelected);
+                  return (
+                    <span className="flex items-center gap-2">
+                      <span>{pct}% ({selectedCount}/{targetSelected})</span>
+                      <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+                    </span>
+                  );
+                })()
+              ) : (
+                "—"
+              )}
+            </StatCard>
+          </div>
 
-  <div className="text-xs text-gray-500 mt-2">
-    Fuente: Archivo VISITAS (una fila = una visita). Requiere columnas: <em>Comercial</em> y <em>Fecha de visita</em>.
-  </div>
-</section>
-        
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>
+            (llamada / visita / reunión).
+          </div>
+        </section>
+
+        {/* Ranking */}
         {visitsModel && (
           <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">Ranking de visitas por comercial ({data.period})</div>
+            <div className="mb-3 font-semibold">
+              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
+            </div>
             <div className="space-y-2">
               {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-                const target = metasMap.get(normName(row.comercial))?.metaVisitas ?? 0;
+                const target = visMode === "visitas"
+                  ? (metasMap.get(normName(row.comercial))?.metaVisitas ?? 0)
+                  : 0;
+
                 const pct = target > 0
                   ? Math.round((row.count / target) * 100)
                   : (row.count > 0 ? 100 : 100);
+
                 const pctBar = Math.min(100, pct);
                 const st = offerStatus(row.count, target);
 
@@ -2248,13 +2341,15 @@ const selectedCount = React.useMemo(() => {
                       <div className="font-medium">{i + 1}. {row.comercial}</div>
                       <div className="flex items-center gap-2">
                         <span className="tabular-nums text-gray-900">
-                          {pct}% ({row.count}/{target})
+                          {visMode === "visitas" ? `${pct}% (${row.count}/${target})` : row.count}
                         </span>
-                        <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                        {visMode === "visitas" && (
+                          <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                        )}
                       </div>
                     </div>
                     <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+                      <div className="h-2 rounded bg-gray-700" style={{ width: (row.count / (max || 1)) * 100 + "%" }} />
                     </div>
                   </div>
                 );
@@ -2266,6 +2361,7 @@ const selectedCount = React.useMemo(() => {
     </div>
   );
 };
+
 
 const ScreenCycle = () => {
   // Usa el memo que arma los datos según cycleMode
