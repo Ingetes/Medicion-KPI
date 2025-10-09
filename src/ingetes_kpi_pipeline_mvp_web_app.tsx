@@ -2725,7 +2725,7 @@ const kpi = React.useMemo(() => {
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_WINRATE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
-            <div className="font-semibold">⏱️ Sales Cycle (días)</div>
+            <div className="font-semibold">⏱️ Ciclo de venta (días)</div>
             <p className="text-xs text-gray-500 mt-1">Fuente: DETALLADO</p>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_CYCLE")} disabled={!detail}>Ver KPI</button>
           </div>
