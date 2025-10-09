@@ -425,13 +425,14 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   };
 
   const idxCom = findIdx("comercial","propietario","owner","vendedor","ejecutivo");
-  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento");
+  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento"); // ← puede quedar en -1
   const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
   const idxAsu = findIdx("asunto","subject","título","titulo","title","tema","descripcion","descripción");
 
-  if (idxCom < 0 || idxFec < 0) {
-    throw new Error(`VISITAS: faltan columnas (Comercial y Fecha) en hoja ${sheetName}`);
+  if (idxCom < 0) {
+    throw new Error(`VISITAS: falta columna de Comercial/Propietario en hoja ${sheetName}`);
   }
+  // La fecha ya NO es obligatoria (idxFec puede ser -1)
 
   const rows:any[] = [];
   let currentComercial = "";   // ← arrastre del comercial
@@ -469,23 +470,26 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const comercial = currentComercial;
     if (!comercial) continue; // aún no hay comercial vigente → no contar
 
-    // Fecha robusta
-    const fecha = parseDateCell(row[idxFec]);
-    if (!fecha) continue;
-
-    // Periodo YYYY-MM (UTC)
-    const d = new Date(fecha);
-    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
-
+    // Fecha (opcional). Si no hay o no parsea, igual contamos el evento.
+    let ym = "";
+    if (idxFec >= 0) {
+      const fecha = parseDateCell(row[idxFec]);
+      if (fecha instanceof Date && !isNaN(fecha.getTime())) {
+        const d = new Date(fecha);
+        ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+      }
+    }
+    
     const cliente = idxCli >= 0 ? String(row[idxCli] ?? "").trim() : "";
     const asunto = idxAsu >= 0 ? String(row[idxAsu] ?? "").trim() : "";
     const kind = classifyEventFromSubject(asunto);
 
-    rows.push({ comercial, fecha: d, ym, cliente, asunto, kind });
+    rows.push({ comercial, fecha: undefined, ym, cliente, asunto, kind });
   }
 
   if (!rows.length) throw new Error(`VISITAS: sin filas válidas en ${sheetName}`);
-  const periods = Array.from(new Set(rows.map(r=>r.ym))).sort(); // solo meses
+  // Si no hubo fechas, tendremos ym="" → mostramos un único período vacío
+  const periods = Array.from(new Set(rows.map(r => r.ym || ""))).sort((a,b)=>a.localeCompare(b));
   return { rows, sheetName, periods };
 }
 
