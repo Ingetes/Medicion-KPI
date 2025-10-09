@@ -721,35 +721,6 @@ function openOffersByComercial(detailRows: Array<{ comercial: string; etapa?: st
 }
 
 function calcWinRateBudgetFromPivot(model: any) {
-  // Win rate por presupuesto = $ganadas / $ofertadas (ganadas + perdidas + abiertas)
-  const porComercial = model.rows.map((r: any) => {
-    let totalValue = 0;
-    let wonValue   = 0;
-
-    for (const [stage, agg] of Object.entries(r.values)) {
-      const sum = Number((agg as any)?.sum || 0);
-      totalValue += sum;
-
-      const st = norm(String(stage));
-      if (st.includes("closed won") || st.includes("ganad")) {
-        wonValue += sum;
-      }
-    }
-
-    const winRate = totalValue > 0 ? (wonValue / totalValue) * 100 : 0;
-    return { comercial: r.comercial, won: wonValue, total: totalValue, winRate };
-  });
-
-  const totalAgg = porComercial.reduce(
-    (a, x) => ({ won: a.won + x.won, total: a.total + x.total }),
-    { won: 0, total: 0 }
-  );
-  const totalWinRate = totalAgg.total > 0 ? (totalAgg.won / totalAgg.total) * 100 : 0;
-
-  return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
-}
-
-function calcWinRateBudgetFromPivot(model: any) {
   // Win rate por presupuesto = (valor ganadas) / (valor total)
   const porComercial = model.rows.map((r: any) => {
     let totalValue = 0;
@@ -1813,39 +1784,51 @@ const selected = useMemo(() => {
     </div>
   </div>
 
-  {(() => {
-    const totalWon   = data.total.won;
-    const totalCount = data.total.total;
-    const totalRate  = Math.round(data.total.winRate || 0);
+{(() => {
+  const totalWon   = data.total.won;
+  const totalCount = data.total.total;  // en “presupuesto” es $ total
+  const totalRate  = Math.round(data.total.winRate || 0);
 
-    const rowSel = selectedComercial === "ALL"
-      ? null
-      : data.porComercial.find((r: any) => r.comercial === selectedComercial);
+  const rowSel = selectedComercial === "ALL"
+    ? null
+    : data.porComercial.find((r: any) => r.comercial === selectedComercial);
 
-    const selWon   = rowSel?.won   ?? 0;
-    const selCount = rowSel?.total ?? 0;
-    const selRate  = Math.round(selected || 0);
+  const selWon   = rowSel?.won   ?? 0; // en “presupuesto” es $ ganadas
+  const selCount = rowSel?.total ?? 0; // en “presupuesto” es $ total
+  const selRate  = Math.round(selected || 0);
 
-    const cumplPct = winRateTarget > 0 ? Math.round((selRate / winRateTarget) * 100) : (selRate > 0 ? 100 : 0);
-    const st       = color(selRate);
+  // formateador COP local para presupuesto
+  const money = (n: number) =>
+    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 
-    return (
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Win Rate (compañía)">
-          {totalRate}% ({totalWon}/{totalCount})
-        </StatCard>
-        <StatCard label="Del comercial seleccionado">
-          {selRate}% ({selWon}/{selCount})
-        </StatCard>
-        <StatCard label="Cumplimiento vs meta (%)">
-          <span className="flex items-center gap-2">
-            <span>{cumplPct}%</span>
-            <span className={`inline-block w-3 h-3 rounded-full ${st}`} />
-          </span>
-        </StatCard>
-      </div>
-    );
-  })()}
+  // etiqueta won/total según modo
+  const pair = (won: number, total: number) =>
+    mode === "presupuesto" ? `${money(won)} / ${money(total)}` : `${won}/${total}`;
+
+  const cumplPct = winRateTarget > 0
+    ? Math.round((selRate / winRateTarget) * 100)
+    : (selRate > 0 ? 100 : 0);
+
+  const st = color(selRate);
+
+  return (
+    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <StatCard label="Win Rate (compañía)">
+        {totalRate}% ({pair(totalWon, totalCount)})
+      </StatCard>
+      <StatCard label="Del comercial seleccionado">
+        {selRate}% ({pair(selWon, selCount)})
+      </StatCard>
+      <StatCard label="Cumplimiento vs meta (%)">
+        <span className="flex items-center gap-2">
+          <span>{cumplPct}%</span>
+          <span className={`inline-block w-3 h-3 rounded-full ${st}`} />
+        </span>
+      </StatCard>
+    </div>
+  );
+})()}
+
 </section>
           {pivot && (
             <section className="p-4 bg-white rounded-xl border">
@@ -1876,7 +1859,16 @@ const selected = useMemo(() => {
                     <div key={row.comercial} className="text-sm">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{row.comercial}</span>
-                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.winRate)}`}></span><span>{Math.round(row.winRate)}% ({row.won}/{row.total})</span></span>
+                        <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.winRate)}`}></span>
+{(() => {
+  const money = (n: number) =>
+    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+  const pair = mode === "presupuesto"
+    ? `${money(row.won)} / ${money(row.total)}`
+    : `${row.won}/${row.total}`;
+  return <span>{Math.round(row.winRate)}% ({pair})</span>;
+})()}
+                        </span>
                       </div>
                       <div className="h-2 bg-gray-200 rounded"><div className="h-2 rounded bg-gray-700" style={{ width: pct + "%" }} /></div>
                     </div>
