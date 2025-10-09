@@ -1,9 +1,9 @@
-export default defineConfig({
+// vite.config.cjs
+module.exports = {
   base: '/Medicion-KPI/',
   build: {
-    sourcemap: false,      // evita subir mapas (pesan)
+    sourcemap: false,
     cssCodeSplit: true,
-    brotliSize: false,     // evita cálculo de tamaños
-    chunkSizeWarningLimit: 1200
-  }
-})
+    brotliSize: false,
+  },
+}
