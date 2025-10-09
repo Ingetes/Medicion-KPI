@@ -187,9 +187,18 @@ const toNumber = (v:any) => {
 // --- Clasificación de eventos por texto (Asunto/Tipo) ---
 function classifyEvent(asunto?: string, tipo?: string): "llamadas" | "visitas" | "reuniones" | "otros" {
   const s = `${norm(asunto || "")} ${norm(tipo || "")}`;
-  if (/(llamad|call|Call|telefono|telef)/.test(s)) return "llamadas";
-  if (/(reunion|reunión|meeting|Meeting|Reunión Virtual|Reunión Comercial)/.test(s)) return "reuniones";
-  if (/(visita|visit|Visita Comercial)/.test(s)) return "visitas";
+
+  // ✅ detecta palabras como "llamada", "llamó", "telefono", etc.
+  if (/(llamad|call|telefono|telef)/i.test(s)) return "llamadas";
+
+  // ✅ detecta "reunion", "reunión", "reunion con", "reunion cliente", "meeting", etc.
+  if (/(reunion|reunión|meeting|reunion con|reunion cliente|reunion comercial|reunion virtual)/i.test(s))
+    return "reuniones";
+
+  // ✅ detecta "visita", "visita a", "visita cliente", "visita comercial", etc.
+  if (/(visita|visit|visita a|visita cliente|visita comercial|visita planta)/i.test(s))
+    return "visitas";
+
   return "otros";
 }
 
