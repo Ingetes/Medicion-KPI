@@ -1849,6 +1849,11 @@ const data = useMemo(() => {
     ? calcWinRateFromPivot(pivot)
     : calcWinRateBudgetFromPivot(pivot);
 }, [pivot, mode]);
+const winRateBudget = useMemo(() => {
+  if (detail && detail.length) return calcWinRateBudgetFromDetail(detail);
+  if (pivot) return calcWinRateBudgetFromPivot(pivot);
+  return { total: { winRate: 0, wonCOP: 0, totalCOP: 0 }, porComercial: [] };
+}, [detail, pivot]);
 const selected = useMemo(() => {
   if (!pivot) return 0; 
   if (selectedComercial === "ALL") return data.total.winRate; 
