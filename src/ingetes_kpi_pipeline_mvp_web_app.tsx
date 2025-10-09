@@ -480,10 +480,15 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
 
     const cliente = idxCli >= 0 ? String(row[idxCli] ?? "").trim() : "";
-    const tipo    = idxTip >= 0 ? String(row[idxTip] ?? "").trim() : "";
+// Usa siempre el asunto como base principal para clasificar
+let asunto = "";
+if (idxAsu >= 0) asunto = String(row[idxAsu] ?? "").trim();
+else if (idxTip >= 0) asunto = String(row[idxTip] ?? "").trim(); // fallback si no hay columna asunto
 
-    const asunto = idxAsu >= 0 ? String(row[idxAsu] ?? "").trim() : "";
-    const kind   = classifyEvent(asunto, tipo); // "llamadas" | "visitas" | "reuniones" | "otros"
+const tipo = idxTip >= 0 ? String(row[idxTip] ?? "").trim() : "";
+
+// Clasificación más robusta (llamadas / visitas / reuniones)
+const kind = classifyEvent(asunto, tipo);
 
     rows.push({ comercial, fecha: d, ym, cliente, tipo, asunto, kind });
 
