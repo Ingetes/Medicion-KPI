@@ -130,6 +130,17 @@ const norm = (s:any) => String(s ?? "")
   .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
 
+// Columna/clave que representa totales del pivot (no contarla)
+const isTotalLike = (key: string) => {
+  const z = norm(key);
+  return (
+    z === "total" ||
+    z === "__total__" ||
+    z === "totalgeneral" ||
+    z.includes("total")
+  );
+};
+
 function calcOfferCountFromDetail(detailModel:any){
   const by = new Map<string, number>();
   const all = detailModel?.allRows || [];
@@ -776,13 +787,15 @@ function calcWinRateBudgetFromPivot(model: any) {
   };
 }
 
-// Win rate por CANTIDAD (# ganadas / # totales) desde el RESUMEN
 function calcWinRateFromPivot(model: any) {
   const porComercial = model.rows.map((r: any) => {
     let total = 0;
     let won   = 0;
 
     for (const [stage, agg] of Object.entries(r.values)) {
+      // ⬅️ evitar duplicar contando la columna TOTAL del pivot
+      if (isTotalLike(String(stage))) continue;
+
       const count = Number((agg as any)?.count || 0);
       total += count;
 
