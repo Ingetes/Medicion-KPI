@@ -1856,12 +1856,6 @@ const getWon = (row: any) =>
 const getTotal = (row: any) =>
   mode === "presupuesto" ? Number(row?.totalCOP || 0) : Number(row?.total || 0);
 
-const winRateBudget = useMemo(() => {
-  if (detail?.allRows?.length) return calcWinRateBudgetFromDetail(detail);
-  if (pivot) return calcWinRateBudgetFromPivot(pivot);
-  return { total: { winRate: 0, wonCOP: 0, totalCOP: 0 }, porComercial: [] };
-}, [detail, pivot]);
-    
 const selected = useMemo(() => {
   if (!pivot) return 0; 
   if (selectedComercial === "ALL") return data.total.winRate; 
