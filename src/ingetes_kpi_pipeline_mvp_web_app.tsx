@@ -749,6 +749,35 @@ function calcWinRateBudgetFromPivot(model: any) {
   return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
 }
 
+// Win rate por CANTIDAD (# ganadas / # totales) desde el RESUMEN
+function calcWinRateFromPivot(model: any) {
+  const porComercial = model.rows.map((r: any) => {
+    let total = 0;
+    let won   = 0;
+
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const count = Number((agg as any)?.count || 0);
+      total += count;
+
+      const st = norm(String(stage));
+      if (st.includes("closed won") || st.includes("ganad")) {
+        won += count;
+      }
+    }
+
+    const winRate = total > 0 ? (won / total) * 100 : 0;
+    return { comercial: r.comercial, won, total, winRate };
+  });
+
+  const totalAgg = porComercial.reduce(
+    (a, x) => ({ won: a.won + x.won, total: a.total + x.total }),
+    { won: 0, total: 0 }
+  );
+  const totalWinRate = totalAgg.total > 0 ? (totalAgg.won / totalAgg.total) * 100 : 0;
+
+  return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
+}
+
 function calcAttainmentFromPivot(model: any, goalFor: (comercial: string) => number) {
   const porComercial = model.rows.map((r: any) => {
     let wonCOP = 0;
@@ -2326,65 +2355,8 @@ const ScreenAttainment = () => {
   type RowAtt = { comercial: string; wonCOP: number; goal: number; pct: number };
 
 const kpi = React.useMemo(() => {
-  type RowWin = {
-    comercial: string;
-    totalOffers: number; // cantidad total de ofertas
-    wonOffers: number;   // cantidad ganadas
-    totalValue: number;  // $ total de ofertas
-    wonValue: number;    // $ ganadas
-    pct: number;         // porcentaje según 'mode'
-  };
-
-  // pivot.rows debe tener la forma que ya usas: r.values[etapa] = { count, sum }
-  const rows: RowWin[] = pivot.rows.map((r: any) => {
-    let totalOffers = 0;
-    let wonOffers   = 0;
-    let totalValue  = 0;
-    let wonValue    = 0;
-
-    for (const [stage, v] of Object.entries(r.values)) {
-      const count = (v as any)?.count ?? 0;
-      const sum   = (v as any)?.sum   ?? 0;
-      const s = String(stage).toLowerCase();
-
-      totalOffers += count;
-      totalValue  += sum;
-
-      // Ajusta si tu resumen usa otro texto para "ganadas" (ya contempla "closed won")
-      if (s.includes("closed won") || s.includes("ganad")) {
-        wonOffers += count;
-        wonValue  += sum;
-      }
-    }
-
-    const pct =
-      mode === "cantidad"
-        ? (totalOffers > 0 ? (wonOffers / totalOffers) * 100 : 0)
-        : (totalValue  > 0 ? (wonValue  / totalValue)  * 100 : 0);
-
-    return { comercial: r.comercial, totalOffers, wonOffers, totalValue, wonValue, pct };
-  });
-
-  // Totales empresa
-  const total = rows.reduce(
-    (acc, r) => ({
-      totalOffers: acc.totalOffers + r.totalOffers,
-      wonOffers:   acc.wonOffers   + r.wonOffers,
-      totalValue:  acc.totalValue  + r.totalValue,
-      wonValue:    acc.wonValue    + r.wonValue,
-    }),
-    { totalOffers: 0, wonOffers: 0, totalValue: 0, wonValue: 0 }
-  );
-
-  const totalPct =
-    mode === "cantidad"
-      ? (total.totalOffers > 0 ? (total.wonOffers / total.totalOffers) * 100 : 0)
-      : (total.totalValue  > 0 ? (total.wonValue  / total.totalValue)  * 100 : 0);
-
-  rows.sort((a, b) => b.pct - a.pct);
-
-  return { porComercial: rows, total: totalPct };
-}, [pivot, mode]); // <-- importante: 'mode' en las dependencias
+  return calcAttainmentFromPivot(pivot, goalFor);
+}, [pivot, goalFor]);
 
   // Comercial seleccionado
   const selectedAtt = React.useMemo(() => {
