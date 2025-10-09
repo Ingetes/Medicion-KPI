@@ -721,32 +721,59 @@ function openOffersByComercial(detailRows: Array<{ comercial: string; etapa?: st
 }
 
 function calcWinRateBudgetFromPivot(model: any) {
-  // Win rate por presupuesto = (valor ganadas) / (valor total)
+  const isClosedWon = (s: string) => {
+    const z = norm(s);
+    return z.includes("closed won") || z.includes("ganad");
+  };
+
+  // claves que el pivot suele poner y que NO debemos sumar en el denominador
+  const isTotalLike = (key: string) => {
+    const z = norm(key);
+    return (
+      z === "total" ||
+      z === "__total__" ||
+      z === "totalgeneral" ||
+      z.includes("total") ||
+      z.includes("registro") || // recuento de registros
+      z.includes("count") ||    // count
+      z.includes("recuento")    // recuento
+    );
+  };
+
   const porComercial = model.rows.map((r: any) => {
-    let totalValue = 0;
-    let wonValue   = 0;
+    let totalCOP = 0;
+    let wonCOP = 0;
 
+    // r.values = { Etapa -> { sum, count, ... }, Total -> { sum, ... } }
     for (const [stage, agg] of Object.entries(r.values)) {
-      const sum = Number((agg as any)?.sum || 0);
-      totalValue += sum;
+      if (isTotalLike(stage)) continue; // <- EVITA DUPLICAR
 
-      const st = norm(String(stage));
-      if (st.includes("closed won") || st.includes("ganad")) {
-        wonValue += sum;
-      }
+      // Toma solo el agregado de SUMA en dinero
+      const sum = Number(
+        (agg as any)?.sum ??
+        (agg as any)?.sumPrice ??
+        (agg as any)?.precio ??
+        0
+      );
+
+      totalCOP += sum;
+      if (isClosedWon(stage)) wonCOP += sum;
     }
 
-    const winRate = totalValue > 0 ? (wonValue / totalValue) * 100 : 0;
-    return { comercial: r.comercial, won: wonValue, total: totalValue, winRate };
+    const winRate = totalCOP > 0 ? (wonCOP / totalCOP) * 100 : 0;
+    return { comercial: r.comercial, wonCOP, totalCOP, winRate };
   });
 
   const totalAgg = porComercial.reduce(
-    (a, x) => ({ won: a.won + x.won, total: a.total + x.total }),
-    { won: 0, total: 0 }
+    (a, x) => ({ wonCOP: a.wonCOP + x.wonCOP, totalCOP: a.totalCOP + x.totalCOP }),
+    { wonCOP: 0, totalCOP: 0 }
   );
-  const totalWinRate = totalAgg.total > 0 ? (totalAgg.won / totalAgg.total) * 100 : 0;
+  const totalWinRate = totalAgg.totalCOP > 0 ? (totalAgg.wonCOP / totalAgg.totalCOP) * 100 : 0;
 
-  return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
+  return {
+    total: { winRate: totalWinRate, wonCOP: totalAgg.wonCOP, totalCOP: totalAgg.totalCOP },
+    porComercial
+  };
 }
 
 // Win rate por CANTIDAD (# ganadas / # totales) desde el RESUMEN
@@ -776,6 +803,44 @@ function calcWinRateFromPivot(model: any) {
   const totalWinRate = totalAgg.total > 0 ? (totalAgg.won / totalAgg.total) * 100 : 0;
 
   return { total: { winRate: totalWinRate, won: totalAgg.won, total: totalAgg.total }, porComercial };
+}
+
+function calcWinRateBudgetFromDetail(detail: any[]) {
+  const isClosedWon = (s: string) => {
+    const z = norm(s);
+    return z.includes("closed won") || z.includes("ganad");
+  };
+
+  const byOwner: Record<string, { wonCOP: number; totalCOP: number }> = {};
+
+  detail.forEach((row: any) => {
+    const owner = String(row.ownerNorm || row.owner || row.comercial || "SIN_COMERCIAL");
+    const amount = Number(row.totalPrice || row.importe || row.monto || row.precio || 0);
+    const stage = String(row.stageNorm || row.stage || row.etapa || "");
+
+    if (!byOwner[owner]) byOwner[owner] = { wonCOP: 0, totalCOP: 0 };
+    byOwner[owner].totalCOP += amount;
+    if (isClosedWon(stage)) byOwner[owner].wonCOP += amount;
+  });
+
+  const porComercial = Object.entries(byOwner).map(([comercial, v]) => ({
+    comercial,
+    wonCOP: v.wonCOP,
+    totalCOP: v.totalCOP,
+    winRate: v.totalCOP > 0 ? (v.wonCOP / v.totalCOP) * 100 : 0
+  }));
+
+  const totalAgg = porComercial.reduce(
+    (a, x) => ({ wonCOP: a.wonCOP + x.wonCOP, totalCOP: a.totalCOP + x.totalCOP }),
+    { wonCOP: 0, totalCOP: 0 }
+  );
+
+  const totalWinRate = totalAgg.totalCOP > 0 ? (totalAgg.wonCOP / totalAgg.totalCOP) * 100 : 0;
+
+  return {
+    total: { winRate: totalWinRate, wonCOP: totalAgg.wonCOP, totalCOP: totalAgg.totalCOP },
+    porComercial
+  };
 }
 
 function calcAttainmentFromPivot(model: any, goalFor: (comercial: string) => number) {
