@@ -1840,7 +1840,7 @@ const kpi = React.useMemo(
 };
 
   const ScreenWinRate = () => {
-    const [mode, setMode] = React.useState<"cantidad" | "presupuesto">("cantidad");
+const [mode, setMode] = React.useState<"cantidad" | "presupuesto">("cantidad");
 const data = useMemo(() => {
   if (!pivot) {
     return { total: { winRate: 0, won: 0, total: 0 }, porComercial: [] as any[] };
@@ -1849,20 +1849,31 @@ const data = useMemo(() => {
     ? calcWinRateFromPivot(pivot)
     : calcWinRateBudgetFromPivot(pivot);
 }, [pivot, mode]);
+
+// Helpers para leer won / total según el modo activo
+const getWon = (row: any) =>
+  mode === "presupuesto" ? Number(row?.wonCOP || 0) : Number(row?.won || 0);
+
+const getTotal = (row: any) =>
+  mode === "presupuesto" ? Number(row?.totalCOP || 0) : Number(row?.total || 0);
+
 const winRateBudget = useMemo(() => {
-  if (detail && detail.length) return calcWinRateBudgetFromDetail(detail);
+  if (detail?.allRows?.length) return calcWinRateBudgetFromDetail(detail);
   if (pivot) return calcWinRateBudgetFromPivot(pivot);
   return { total: { winRate: 0, wonCOP: 0, totalCOP: 0 }, porComercial: [] };
 }, [detail, pivot]);
+    
 const selected = useMemo(() => {
   if (!pivot) return 0; 
   if (selectedComercial === "ALL") return data.total.winRate; 
   return data.porComercial.find(r => r.comercial === selectedComercial)?.winRate || 0;
 }, [pivot, data, selectedComercial]);
-    const max = useMemo(() => {
+    
+  const max = useMemo(() => {
   const arr = onlySelected(data.porComercial, selectedComercial);
   return Math.max(data.total.winRate || 0, ...(arr.map((row: any) => row.winRate || 0)));
 }, [data, selectedComercial]);
+    
     const color = (v: number)=> v>=winRateTarget?"bg-green-500":(v>=winRateTarget*0.8?"bg-yellow-400":"bg-red-500");
     return (
       <div className="min-h-screen bg-gray-50">
@@ -1884,25 +1895,32 @@ const selected = useMemo(() => {
   </div>
 
 {(() => {
-  const totalWon   = data.total.won;
-  const totalCount = data.total.total;  // en “presupuesto” es $ total
-  const totalRate  = Math.round(data.total.winRate || 0);
+const totalWon   = getWon(data.total);
+const totalCount = getTotal(data.total);
+const totalRate  = Math.round(data.total.winRate || 0);
 
-  const rowSel = selectedComercial === "ALL"
-    ? null
-    : data.porComercial.find((r: any) => r.comercial === selectedComercial);
+const rowSel = selectedComercial === "ALL"
+  ? null
+  : data.porComercial.find((r: any) => r.comercial === selectedComercial);
 
-  const selWon   = rowSel?.won   ?? 0; // en “presupuesto” es $ ganadas
-  const selCount = rowSel?.total ?? 0; // en “presupuesto” es $ total
-  const selRate  = Math.round(selected || 0);
+const selWon   = rowSel ? getWon(rowSel)   : 0;
+const selCount = rowSel ? getTotal(rowSel) : 0;
+const selRate  = Math.round(
+  selectedComercial === "ALL"
+    ? (data.total.winRate || 0)
+    : (rowSel?.winRate || 0)
+);
 
-  // formateador COP local para presupuesto
-  const money = (n: number) =>
-    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+const money = (n: number) =>
+  (Number(n) || 0).toLocaleString("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  });
 
-  // etiqueta won/total según modo
-  const pair = (won: number, total: number) =>
-    mode === "presupuesto" ? `${money(won)} / ${money(total)}` : `${won}/${total}`;
+// Etiqueta won/total según el modo
+const pair = (won: number, total: number) =>
+  mode === "presupuesto" ? `${money(won)} / ${money(total)}` : `${won}/${total}`;
 
   const cumplPct = winRateTarget > 0
     ? Math.round((selRate / winRateTarget) * 100)
@@ -1912,12 +1930,13 @@ const selected = useMemo(() => {
 
   return (
     <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-      <StatCard label="Win Rate (compañía)">
-        {totalRate}% ({pair(totalWon, totalCount)})
-      </StatCard>
-      <StatCard label="Del comercial seleccionado">
-        {selRate}% ({pair(selWon, selCount)})
-      </StatCard>
+<StatCard label="Win Rate (compañía)">
+  {totalRate}% ({pair(totalWon, totalCount)})
+</StatCard>
+
+<StatCard label="Del comercial seleccionado">
+  {selRate}% ({pair(selWon, selCount)})
+</StatCard>
       <StatCard label="Cumplimiento vs meta (%)">
         <span className="flex items-center gap-2">
           <span>{cumplPct}%</span>
@@ -1960,12 +1979,12 @@ const selected = useMemo(() => {
                         <span className="font-medium">{row.comercial}</span>
                         <span className="flex items-center gap-2"><span className={`inline-block w-2 h-2 rounded-full ${color(row.winRate)}`}></span>
 {(() => {
-  const money = (n: number) =>
-    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
-  const pair = mode === "presupuesto"
-    ? `${money(row.won)} / ${money(row.total)}`
-    : `${row.won}/${row.total}`;
-  return <span>{Math.round(row.winRate)}% ({pair})</span>;
+  const won = getWon(row);
+  const tot = getTotal(row);
+  const txt = mode === "presupuesto"
+    ? `${money(won)} / ${money(tot)}`
+    : `${won}/${tot}`;
+  return <span>{Math.round(row.winRate)}% ({txt})</span>;
 })()}
                         </span>
                       </div>
