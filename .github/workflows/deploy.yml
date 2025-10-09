@@ -3,13 +3,6 @@ name: Deploy Vite to GitHub Pages
 on:
   push:
     branches: [ main ]
-    paths:
-      - "src/**"
-      - "index.html"
-      - "vite.config.*"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -27,20 +20,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1         # shallow clone = más rápido
+          fetch-depth: 1
 
-      - uses: actions/setup-node@v4
+      # Con cache (solo si existe package-lock.json)
+      - name: Setup Node (with cache)
+        if: ${{ hashFiles('**/package-lock.json') != '' }}
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'           # <— cachea node_modules
+          cache: npm
           cache-dependency-path: package-lock.json
 
-      - run: npm ci              # usa lockfile; más rápido y determinístico
+      # Sin cache (si no hay lockfile)
+      - name: Setup Node (no cache)
+        if: ${{ hashFiles('**/package-lock.json') == '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Instala con ci si hay lockfile, si no usa install
+      - name: Install deps (npm ci)
+        if: ${{ hashFiles('**/package-lock.json') != '' }}
+        run: npm ci
+      - name: Install deps (npm install)
+        if: ${{ hashFiles('**/package-lock.json') == '' }}
+        run: npm install
+
       - run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist             # solo sube lo necesario
+          path: dist
 
   deploy:
     runs-on: ubuntu-latest
