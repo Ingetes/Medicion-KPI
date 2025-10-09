@@ -1849,6 +1849,14 @@ const data = useMemo(() => {
     : calcWinRateBudgetFromPivot(pivot);
 }, [pivot, mode]);
 
+// formateo de COP reutilizable en toda la pantalla
+const money = (n: number) =>
+  (Number(n) || 0).toLocaleString("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  });
+
 // Helpers para leer won / total según el modo activo
 const getWon = (row: any) =>
   mode === "presupuesto" ? Number(row?.wonCOP || 0) : Number(row?.won || 0);
