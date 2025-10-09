@@ -184,19 +184,19 @@ const toNumber = (v:any) => {
   return isFinite(n) ? n : 0;
 };
 
-// --- Clasificación de eventos por texto (Asunto/Tipo) ---
-function classifyEvent(asunto?: string, tipo?: string): "llamadas" | "visitas" | "reuniones" | "otros" {
-  const s = `${norm(asunto || "")} ${norm(tipo || "")}`;
+// --- Clasificación de eventos SOLO por Asunto ---
+function classifyEventFromSubject(asunto?: string): "llamadas" | "visitas" | "reuniones" | "otros" {
+  const s = norm(asunto || "");
 
-  // ✅ detecta palabras como "llamada", "llamó", "telefono", etc.
-  if (/(llamad|call|telefono|telef)/i.test(s)) return "llamadas";
+  // llamadas: call / llamada / teléfono
+  if (/(?:\bcall\b|llamad|telefon)/i.test(s)) return "llamadas";
 
-  // ✅ detecta "reunion", "reunión", "reunion con", "reunion cliente", "meeting", etc.
-  if (/(reunion|reunión|meeting|reunion con|reunion cliente|reunion comercial|reunion virtual)/i.test(s))
+  // reuniones: reunion / reunión / meeting / "reunion con" / "reunion cliente"
+  if (/(?:\breunion|\breunión|\bmeeting|reunion con|reunion cliente|reunion comercial|reunion virtual)/i.test(s))
     return "reuniones";
 
-  // ✅ detecta "visita", "visita a", "visita cliente", "visita comercial", etc.
-  if (/(visita|visit|visita a|visita cliente|visita comercial|visita planta)/i.test(s))
+  // visitas: visita / visit / "visita a" / "visita cliente" / "visita comercial" / "visita planta"
+  if (/(?:\bvisita|\bvisit|visita a|visita cliente|visita comercial|visita planta)/i.test(s))
     return "visitas";
 
   return "otros";
@@ -427,9 +427,7 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const idxCom = findIdx("comercial","propietario","owner","vendedor","ejecutivo");
   const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento");
   const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
-  const idxTip = findIdx("tipo visita","tipo de visita","modalidad","presencial","virtual","canal");
   const idxAsu = findIdx("asunto","subject","título","titulo","title","tema","descripcion","descripción");
-
 
   if (idxCom < 0 || idxFec < 0) {
     throw new Error(`VISITAS: faltan columnas (Comercial y Fecha) en hoja ${sheetName}`);
@@ -480,18 +478,10 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
 
     const cliente = idxCli >= 0 ? String(row[idxCli] ?? "").trim() : "";
-// Usa siempre el asunto como base principal para clasificar
-let asunto = "";
-if (idxAsu >= 0) asunto = String(row[idxAsu] ?? "").trim();
-else if (idxTip >= 0) asunto = String(row[idxTip] ?? "").trim(); // fallback si no hay columna asunto
+    const asunto = idxAsu >= 0 ? String(row[idxAsu] ?? "").trim() : "";
+    const kind = classifyEventFromSubject(asunto);
 
-const tipo = idxTip >= 0 ? String(row[idxTip] ?? "").trim() : "";
-
-// Clasificación más robusta (llamadas / visitas / reuniones)
-const kind = classifyEvent(asunto, tipo);
-
-    rows.push({ comercial, fecha: d, ym, cliente, tipo, asunto, kind });
-
+    rows.push({ comercial, fecha: d, ym, cliente, asunto, kind });
   }
 
   if (!rows.length) throw new Error(`VISITAS: sin filas válidas en ${sheetName}`);
