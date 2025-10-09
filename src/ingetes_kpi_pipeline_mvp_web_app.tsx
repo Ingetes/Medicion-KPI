@@ -424,10 +424,20 @@ function parseVisitsFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     return -1;
   };
 
-  const idxCom = findIdx("comercial","propietario","owner","vendedor","ejecutivo");
-  const idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento"); // ← puede quedar en -1
-  const idxCli = findIdx("cliente","account","empresa","compania","company","account name");
-  const idxAsu = findIdx("asunto","subject","título","titulo","title","tema","descripcion","descripción");
+// === FORZAR B (col 1) para Comercial y J (col 9) para Asunto ===
+// seguimos detectando fecha/cliente como opcionales por si existen
+let idxFec = findIdx("fecha de visita","fecha visita","fecha","date","created","evento"); // puede quedar en -1
+let idxCli = findIdx("cliente","account","empresa","compania","company","account name");
+
+// Comercial = COLUMNA B (índice 1) sí o sí
+let idxCom = 1;
+// Asunto     = COLUMNA J (índice 9) sí o sí
+let idxAsu = 9;
+
+// Si los encabezados no están donde esperamos, igual forzamos,
+// pero hacemos una verificación suave para ayudarte en el futuro:
+if (!headers[idxCom]) console.warn("VISITAS: no veo encabezado en B, igual usaré B como Comercial");
+if (!headers[idxAsu]) console.warn("VISITAS: no veo encabezado en J, igual usaré J como Asunto");
 
   if (idxCom < 0) {
     throw new Error(`VISITAS: falta columna de Comercial/Propietario en hoja ${sheetName}`);
