@@ -1265,7 +1265,7 @@ const RouteHome = ({ onEnter }: { onEnter: () => void }) => (
 export default function IngetesKPIApp() {
  const [route, setRoute] = useState<
    "HOME" | "MENU" | "KPI_PIPELINE" | "KPI_WINRATE" | "KPI_CYCLE" | "KPI_ATTAIN" |
-   "KPI_OFFERS" | "KPI_VISITS"
+   "KPI_OFFERS" | "KPI_VISITS" | "KPI_ACTIVITIES" 
  >("MENU");
 
   const [fileDetailName, setFileDetailName] = useState("");
@@ -2173,39 +2173,38 @@ const selected = useMemo(() => {
   );
 };
 
-// === ScreenVisits ===
-// === ScreenVisits ===
+// === ScreenVisits (solo visitas + meeting) ===
 const ScreenVisits = () => {
-  // Modo de conteo
-  const [visMode, setVisMode] = React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
-
   // Filas del período seleccionado
   const periodRows = React.useMemo(() => {
     if (!visitsModel) return [] as any[];
     const periods: string[] = visitsModel.periods || [];
     const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length - 1] || "");
-    return visitsModel.rows.filter((r: any) => r.ym === sel);
+    return (visitsModel.rows || []).filter((r: any) => r.ym === sel);
   }, [visitsModel, visitsPeriod]);
 
-  // Agregación por modo (cuenta por comercial SOLO del tipo elegido)
+  // Cuenta únicamente "visita ..." o "meeting" mirando ASUNTO
   const data = React.useMemo(() => {
     const by = new Map<string, number>();
+    const rx = /(?:\bvisita|\bvisit|visita a|visita cliente|visita comercial|visita planta|\bmeeting)/i;
+
     for (const r of periodRows) {
-      if ((r.kind || "otros") !== visMode) continue;
+      const s = String(r.asunto || "");
+      if (!rx.test(s)) continue;     // ← SOLO visitas o meeting
       by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
     }
+
     const porComercial = Array.from(by.entries())
       .map(([comercial, count]) => ({ comercial, count }))
       .sort((a, b) => b.count - a.count);
-    const total = porComercial.reduce((a, x) => a + x.count, 0);
 
-    // descubre el período activo (si hay)
+    const total = porComercial.reduce((a, x) => a + x.count, 0);
     const sel = (visitsModel?.periods || []).includes(visitsPeriod)
       ? visitsPeriod
       : ((visitsModel?.periods || []).slice(-1)[0] || "");
 
     return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
-  }, [periodRows, visMode, visitsModel, visitsPeriod]);
+  }, [periodRows, visitsModel, visitsPeriod]);
 
   // Conteo del comercial seleccionado
   const selectedCount = React.useMemo(() => {
@@ -2213,13 +2212,13 @@ const ScreenVisits = () => {
     return data.porComercial.find((r: any) => r.comercial === selectedComercial)?.count ?? 0;
   }, [data, selectedComercial]);
 
-  // Año del período para metas
+  // Año del período para metas → metaVisitas
   const yearForVisits = React.useMemo(
     () => Number((data?.period || "").slice(0, 4)) || new Date().getFullYear(),
     [data?.period]
   );
 
-  // Metas (solo aplican cuando el modo es "visitas")
+  // Metas
   const [metasMap, setMetasMap] = React.useState<Map<string, any>>(new Map());
   React.useEffect(() => {
     let cancelled = false;
@@ -2236,28 +2235,143 @@ const ScreenVisits = () => {
     return () => { cancelled = true; };
   }, [yearForVisits]);
 
-  // Meta mensual (solo si el modo es "visitas"); en llamadas/reuniones se muestra "—"
-  const targetSelected = visMode === "visitas"
-    ? (metasMap.get(normName(selectedComercial))?.metaVisitas ?? 0)
-    : 0;
-
-  // Para barra visual
-  const max = React.useMemo(
-    () => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0) || 1,
-    [data]
-  );
-
-  // Etiquetas bonitas
-  const labelForMode = visMode === "llamadas" ? "Llamadas"
-                      : visMode === "reuniones" ? "Reuniones"
-                      : "Visitas";
+  const targetSelected = metasMap.get(normName(selectedComercial))?.metaVisitas ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         <section className="p-4 bg-white rounded-xl border">
-          {/* Selector de período */}
+          {/* Filtros */}
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-sm text-gray-500">
+              Comercial: <b>{selectedComercial}</b>
+            </div>
+
+            <div className="text-sm text-gray-500">
+              Periodo:
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={visitsPeriod}
+                onChange={(e) => setVisitsPeriod(e.target.value)}
+              >
+                {(data.periods || []).map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Tarjetas */}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Visitas del período (compañía)">{data.total}</StatCard>
+            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+            <StatCard label="Cumplimiento (vs meta del Sheet)">
+              {(() => {
+                const pct = targetSelected > 0
+                  ? Math.round((selectedCount / targetSelected) * 100)
+                  : (selectedCount > 0 ? 100 : 100);
+                const st = offerStatus(selectedCount, targetSelected);
+                return (
+                  <span className="flex items-center gap-2">
+                    <span>{pct}% ({selectedCount}/{targetSelected})</span>
+                    <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
+                  </span>
+                );
+              })()}
+            </StatCard>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: archivo de eventos. Se cuenta solo si el <em>Asunto</em> contiene
+            “visita … / visit …” o “meeting”.
+          </div>
+        </section>
+
+        {/* Ranking */}
+        {visitsModel && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">
+              Ranking por comercial (visitas) · {data.period}
+            </div>
+            <div className="space-y-2">
+              {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
+                const target = metasMap.get(normName(row.comercial))?.metaVisitas ?? 0;
+                const pct = target > 0
+                  ? Math.round((row.count / target) * 100)
+                  : (row.count > 0 ? 100 : 100);
+                const pctBar = Math.min(100, pct);
+                const st = offerStatus(row.count, target);
+
+                return (
+                  <div key={row.comercial} className="text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium">{i + 1}. {row.comercial}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="tabular-nums text-gray-900">
+                          {pct}% ({row.count}/{target})
+                        </span>
+                        <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded mt-1">
+                      <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+};
+
+// === ScreenActivities (llamadas/visitas/reuniones desde ASUNTO) ===
+const ScreenActivities = () => {
+  const [mode, setMode] = React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
+
+  // Filas del período seleccionado
+  const periodRows = React.useMemo(() => {
+    if (!visitsModel) return [] as any[];
+    const periods: string[] = visitsModel.periods || [];
+    const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length - 1] || "");
+    return (visitsModel.rows || []).filter((r: any) => r.ym === sel);
+  }, [visitsModel, visitsPeriod]);
+
+  // Agregación por modo (usa r.kind que se armó desde "Asunto")
+  const data = React.useMemo(() => {
+    const by = new Map<string, number>();
+    for (const r of periodRows) {
+      if ((r.kind || "otros") !== mode) continue;
+      by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
+    }
+    const porComercial = Array.from(by.entries())
+      .map(([comercial, count]) => ({ comercial, count }))
+      .sort((a, b) => b.count - a.count);
+    const total = porComercial.reduce((a, x) => a + x.count, 0);
+
+    const sel = (visitsModel?.periods || []).includes(visitsPeriod)
+      ? visitsPeriod
+      : ((visitsModel?.periods || []).slice(-1)[0] || "");
+
+    return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
+  }, [periodRows, mode, visitsModel, visitsPeriod]);
+
+  const selectedCount = React.useMemo(() => {
+    if (selectedComercial === "ALL") return data.total;
+    return data.porComercial.find((r: any) => r.comercial === selectedComercial)?.count ?? 0;
+  }, [data, selectedComercial]);
+
+  const labelForMode =
+    mode === "llamadas" ? "Llamadas" : mode === "reuniones" ? "Reuniones" : "Visitas";
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <BackBar title="KPI • Actividades" />
+      <main className="max-w-6xl mx-auto p-4 space-y-6">
+        <section className="p-4 bg-white rounded-xl border">
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
             <div className="text-sm text-gray-500">
               Comercial: <b>{selectedComercial}</b>
@@ -2276,27 +2390,24 @@ const ScreenVisits = () => {
               </select>
             </div>
 
-            {/* Selector de modo (igual estilo que Ciclo de ventas) */}
+            {/* Botones como en ciclo de ventas */}
             <div className="md:ml-auto">
               <div className="inline-flex rounded-lg border overflow-hidden">
                 <button
-                  className={`px-3 py-1 text-sm ${visMode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setVisMode("llamadas")}
-                  title="Total de llamadas (según Asunto)"
+                  className={`px-3 py-1 text-sm ${mode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("llamadas")}
                 >
                   Llamadas
                 </button>
                 <button
-                  className={`px-3 py-1 text-sm border-l ${visMode === "visitas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setVisMode("visitas")}
-                  title="Total de visitas (según Asunto)"
+                  className={`px-3 py-1 text-sm border-l ${mode === "visitas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("visitas")}
                 >
                   Visitas
                 </button>
                 <button
-                  className={`px-3 py-1 text-sm border-l ${visMode === "reuniones" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setVisMode("reuniones")}
-                  title="Total de reuniones (según Asunto)"
+                  className={`px-3 py-1 text-sm border-l ${mode === "reuniones" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("reuniones")}
                 >
                   Reuniones
                 </button>
@@ -2304,33 +2415,14 @@ const ScreenVisits = () => {
             </div>
           </div>
 
-          {/* Tarjetas superiores */}
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
-            <StatCard label={`Del comercial seleccionado`}>{selectedCount}</StatCard>
-            <StatCard label={visMode === "visitas" ? "Cumplimiento (vs meta del Sheet)" : "Meta"}>
-              {visMode === "visitas" ? (
-                (() => {
-                  const pct = targetSelected > 0
-                    ? Math.round((selectedCount / targetSelected) * 100)
-                    : (selectedCount > 0 ? 100 : 100);
-                  const st = offerStatus(selectedCount, targetSelected);
-                  return (
-                    <span className="flex items-center gap-2">
-                      <span>{pct}% ({selectedCount}/{targetSelected})</span>
-                      <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-                    </span>
-                  );
-                })()
-              ) : (
-                "—"
-              )}
-            </StatCard>
+            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+            <StatCard label="Meta">—</StatCard>
           </div>
 
           <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>
-            (llamada / visita / reunión).
+            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>.
           </div>
         </section>
 
@@ -2342,32 +2434,14 @@ const ScreenVisits = () => {
             </div>
             <div className="space-y-2">
               {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-                const target = visMode === "visitas"
-                  ? (metasMap.get(normName(row.comercial))?.metaVisitas ?? 0)
-                  : 0;
-
-                const pct = target > 0
-                  ? Math.round((row.count / target) * 100)
-                  : (row.count > 0 ? 100 : 100);
-
-                const pctBar = Math.min(100, pct);
-                const st = offerStatus(row.count, target);
-
                 return (
                   <div key={row.comercial} className="text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{i + 1}. {row.comercial}</div>
-                      <div className="flex items-center gap-2">
-                        <span className="tabular-nums text-gray-900">
-                          {visMode === "visitas" ? `${pct}% (${row.count}/${target})` : row.count}
-                        </span>
-                        {visMode === "visitas" && (
-                          <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
-                        )}
-                      </div>
+                      <div className="tabular-nums text-gray-900">{row.count}</div>
                     </div>
                     <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: (row.count / (max || 1)) * 100 + "%" }} />
+                      <div className="h-2 rounded bg-gray-700" style={{ width: (row.count / Math.max(1, data.total)) * 100 + "%" }} />
                     </div>
                   </div>
                 );
@@ -2379,7 +2453,6 @@ const ScreenVisits = () => {
     </div>
   );
 };
-
 
 const ScreenCycle = () => {
   // Usa el memo que arma los datos según cycleMode
@@ -2654,6 +2727,7 @@ const kpi = React.useMemo(() => {
   if (route === "KPI_ATTAIN") return <ScreenAttainment />;
   if (route === "KPI_OFFERS") return <ScreenOffers />;
   if (route === "KPI_VISITS") return <ScreenVisits />;
+  if (route === "KPI_ACTIVITIES") return <ScreenActivities />;
 
   // ===== Menú ===== (route === "MENU")
   return (
@@ -2885,6 +2959,17 @@ const kpi = React.useMemo(() => {
               Ver KPI
             </button>
           </div>
+          <div className="p-4 bg-white rounded-xl border flex flex-col">
+  <div className="font-semibold">📌 Actividades</div>
+  <p className="text-xs text-gray-500 mt-1">Fuente: archivo VISITAS (Asunto)</p>
+  <button
+    className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
+    onClick={() => setRoute("KPI_ACTIVITIES")}
+    disabled={!visitsModel}
+  >
+    Ver KPI
+  </button>
+</div>
         </section>
       </main>
     </div>
