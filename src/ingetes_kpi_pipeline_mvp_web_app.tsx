@@ -557,7 +557,7 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   };
 
   // Columnas clave
-  const idxOwner   = findIdx("comercial", "propietario", "owner", "vendedor", "ejecutivo");
+  const idxOwner   = findIdx("creado por", "comercial", "propietario", "owner", "vendedor", "ejecutivo");
   const idxStatus  = findIdx("estado", "status"); // opcional, solo si no hay fechas
 
   // FECHAS (todas opcionales)
