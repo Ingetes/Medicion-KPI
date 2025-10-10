@@ -2568,6 +2568,25 @@ const ScreenVisits = () => {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
+            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+            <StatCard label="Meta">—</StatCard>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>.
+          </div>
+        </section>
+
+        {/* Ranking */}
+        {visitsModel && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">
+              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
+            </div>
 
             {/* Botones como en ciclo de ventas */}
             <div className="md:ml-auto">
@@ -2591,25 +2610,6 @@ const ScreenVisits = () => {
                   Reuniones
                 </button>
               </div>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
-            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
-            <StatCard label="Meta">—</StatCard>
-          </div>
-
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>.
-          </div>
-        </section>
-
-        {/* Ranking */}
-        {visitsModel && (
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">
-              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
             </div>
             <div className="space-y-2">
               {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
