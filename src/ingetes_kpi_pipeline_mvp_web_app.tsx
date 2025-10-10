@@ -1580,7 +1580,7 @@ const cycleData = useMemo(() => {
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
         <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
         <div className="flex gap-2">
-          <button className="px-3 py-2 rounded border" onClick={() => setRoute("MENU")}>Volver al menú</button>
+          <button className="px-4 py-2 text-sm font-medium rounded-lg border bg-white hover:bg-gray-50" onClick={() => setRoute("MENU")}>Volver al menú</button>
         </div>
       </div>
     </header>
