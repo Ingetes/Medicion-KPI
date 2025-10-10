@@ -2591,30 +2591,6 @@ const ScreenVisits = () => {
                 ))}
               </select>
             </div>
-
-            {/* Botones como en ciclo de ventas */}
-            <div className="md:ml-auto">
-              <div className="inline-flex rounded-lg border overflow-hidden">
-                <button
-                  className={`px-3 py-1 text-sm ${mode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("llamadas")}
-                >
-                  Llamadas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "visitas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("visitas")}
-                >
-                  Visitas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "reuniones" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("reuniones")}
-                >
-                  Reuniones
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Tarjetas superiores */}
@@ -2647,6 +2623,29 @@ const ScreenVisits = () => {
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">
               Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
+            </div>
+            {/* Botones como en ciclo de ventas */}
+            <div className="md:ml-auto">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${mode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("llamadas")}
+                >
+                  Llamadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "visitas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("visitas")}
+                >
+                  Visitas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "reuniones" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("reuniones")}
+                >
+                  Reuniones
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {onlySelected(
