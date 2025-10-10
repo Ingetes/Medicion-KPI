@@ -1821,33 +1821,112 @@ const ScreenPipeline = () => {
     );
   }
 
-  // Win rate asumido (0..1)
-  const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100;
+  // ===== Cargar Win Rate (%) por comercial desde el Sheet del año de Ajustes =====
+  const [wrMap, setWrMap] = React.useState<Map<string, number>>(new Map());
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { metas } = await fetchMetas(settingsYear); // ya definida arriba
+        const m = new Map<string, number>();
+        (metas || []).forEach((r: any) => {
+          const key = normName(r.comercial);
+          const wr = Number(r.metaWinRate ?? 0); // porcentaje (0..100)
+          m.set(key, isFinite(wr) ? wr : 0);
+        });
+        if (!cancelled) setWrMap(m);
+      } catch {
+        if (!cancelled) setWrMap(new Map());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [settingsYear]);
 
-  // Meta anual desde el Sheet del año en Ajustes
+  // Meta anual por comercial desde el Sheet (ya existe en tu app)
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
 
-  // Asegura metas del año
+  // Asegura que tenemos metas del año
   React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
 
-  // KPI principal: won, remaining, needQuote
-  const kpi = React.useMemo(
-    () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
-    [pivot, goalFor, WIN_RATE]
-  );
+  // ===== KPI: cálculo por comercial usando WR INDIVIDUAL =====
+  type RowF = {
+    comercial: string;
+    wonCOP: number;
+    goal: number;
+    remaining: number;
+    needQuote: number;
+    winRatePct: number; // 0..100
+  };
+
+  const kpi = React.useMemo(() => {
+    // construir rows desde el pivot sumando solo Closed Won/Ganada
+    const rows: RowF[] = pivot.rows.map((r: any) => {
+      let wonCOP = 0;
+      for (const [stage, agg] of Object.entries(r.values)) {
+        const s = String(stage).toLowerCase();
+        if (s.includes("closed won") || s.includes("ganad")) {
+          wonCOP += Number((agg as any)?.sum || 0);
+        }
+      }
+      const goal = Math.max(0, goalFor(r.comercial) || 0);
+      const remaining = Math.max(0, goal - wonCOP);
+
+      // Win rate individual (si no hay en sheet, cae a 20%)
+      const wrPct = wrMap.get(normName(r.comercial)) ?? 20;
+      const wr = Math.max(0, Math.min(100, wrPct)) / 100;
+
+      const needQuote = wr > 0 ? Math.ceil(remaining / wr) : 0;
+
+      return {
+        comercial: r.comercial,
+        wonCOP,
+        goal,
+        remaining,
+        needQuote,
+        winRatePct: Math.round(wr * 100),
+      };
+    });
+
+    // Totales compañía: suma de cada comercial (ya con su WR propio)
+    const total = rows.reduce(
+      (a, x) => ({
+        wonCOP: a.wonCOP + x.wonCOP,
+        goal: a.goal + x.goal,
+        remaining: a.remaining + x.remaining,
+        needQuote: a.needQuote + x.needQuote,
+      }),
+      { wonCOP: 0, goal: 0, remaining: 0, needQuote: 0 }
+    );
+
+    // Orden descendente por necesidad de cotizar
+    rows.sort((a, b) => b.needQuote - a.needQuote);
+
+    return { porComercial: rows, total };
+  }, [pivot, wrMap, settingsYear]);
 
   // Seleccionado
   const selected = React.useMemo(() => {
     if (selectedComercial === "ALL") return null;
     return (
       kpi.porComercial.find(r => r.comercial === selectedComercial) ||
-      { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 }
+      {
+        comercial: selectedComercial,
+        wonCOP: 0,
+        goal: goalFor(selectedComercial),
+        remaining: 0,
+        needQuote: 0,
+        winRatePct: wrMap.get(normName(selectedComercial)) ?? 20,
+      }
     );
-  }, [kpi, selectedComercial]);
+  }, [kpi, selectedComercial, wrMap]);
 
-  // Formateo COP
+  // Formateo de moneda
   const fmtCOP = (n: number) =>
-    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+    (Number(n) || 0).toLocaleString("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    });
 
   // Tope visual para barras
   const maxBar = React.useMemo(() => {
@@ -1855,7 +1934,7 @@ const ScreenPipeline = () => {
     return Math.max(kpi.total.needQuote || 0, ...(arr.map(r => r.needQuote || 0)), 1);
   }, [kpi, selectedComercial]);
 
-  // ── Helpers locales para colores (evita conflictos con funciones globales) ──
+  // Color para semáforo de cobertura
   const coverageBg = (ratio: number) => {
     if (!isFinite(ratio) || ratio <= 0) return "bg-red-500";
     if (ratio >= 1) return "bg-green-600";
@@ -1867,7 +1946,7 @@ const ScreenPipeline = () => {
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* Header */}
+        {/* Header (sin control de WR global) */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
             <div className="text-base text-gray-700 font-semibold">
@@ -1876,29 +1955,20 @@ const ScreenPipeline = () => {
             <div className="text-base text-gray-700 font-semibold">
               Año (Sheet): <b>{settingsYear}</b>
             </div>
-
-            <div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
-              Win Rate asumido:
-              <input
-                type="number"
-                min={1}
-                max={100}
-                step={1}
-                className="w-20 border rounded-lg px-2 py-1 text-sm text-right"
-                value={assumedWinRate}
-                onChange={(e) => setAssumedWinRate(Number(e.target.value || 0))}
-                title="Porcentaje de conversión esperado de cotizaciones a ganadas"
-              />
-              <span>%</span>
-            </div>
+            {selectedComercial !== "ALL" && (
+              <div className="md:ml-auto">
+                <span className="inline-flex items-center gap-2 text-sm">
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 border text-gray-700">
+                    WR {((selected?.winRatePct ?? (wrMap.get(normName(selectedComercial)) ?? 20))) }%
+                  </span>
+                </span>
+              </div>
+            )}
           </div>
 
           {(() => {
             const isAll = selectedComercial === "ALL";
-            const sel = isAll
-              ? null
-              : (kpi.porComercial.find(r => r.comercial === selectedComercial) ||
-                 { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 });
+            const sel = isAll ? null : selected;
 
             // Montos abiertos (detallado, solo etapas no cerradas)
             const openAmtSel = isAll
@@ -1933,7 +2003,7 @@ const ScreenPipeline = () => {
                   </div>
                 </div>
 
-                {/* Avance con semáforo (más visible) */}
+                {/* Avance con semáforo */}
                 <div className="bg-white p-4 rounded-lg border text-center">
                   <div className="text-sm text-gray-500 mb-1">
                     {isAll ? "Avance total (abiertas vs necesita)" : "Avance (abiertas vs necesita)"}
@@ -1950,7 +2020,7 @@ const ScreenPipeline = () => {
           })()}
 
           <div className="text-xs text-gray-500 mt-3">
-            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>{Math.round(WIN_RATE * 100)}%</em>.
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>WR individual</em>.
           </div>
         </section>
 
@@ -1981,10 +2051,15 @@ const ScreenPipeline = () => {
                   className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
                 >
                   <div className="p-4 flex flex-col gap-2">
-                    {/* Encabezado: nombre + % + semáforo */}
+                    {/* Encabezado: nombre + WR + % + semáforo */}
                     <div className="flex items-center justify-between">
-                      <div className="font-semibold text-gray-900 text-base">
-                        {i + 1}. {row.comercial}
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold text-gray-900 text-base">
+                          {i + 1}. {row.comercial}
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-gray-100 border text-gray-700 text-xs">
+                          WR {row.winRatePct}%
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-700">
                         <span className="tabular-nums">{pctOpen}%</span>
@@ -2037,7 +2112,7 @@ const ScreenPipeline = () => {
                       </div>
                     </div>
 
-                    {/* Barra: abiertas vs necesita (más ancha) */}
+                    {/* Barra: abiertas vs necesita */}
                     <div className="mt-3">
                       <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
                         <span>Abiertas: <b>{fmtCOP(openAmt)}</b></span>
