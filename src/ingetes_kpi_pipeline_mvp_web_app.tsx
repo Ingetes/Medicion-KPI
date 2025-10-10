@@ -1450,7 +1450,9 @@ type MetaSheetRow = {
   metaAnual: number;
   metaOfertas: number;
   metaVisitas: number;
+  metaLlamadas: number;   // ← NEW
 };
+
 const [metasByYear, setMetasByYear] = useState<Record<number, MetaSheetRow[]>>({});
 
 const normalizeName = (s: string) =>
@@ -1461,13 +1463,20 @@ async function ensureMetasForYear(year: number) {
   const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
-  const metas: MetaRecordForYear[] = (data?.metas || []).map((m: any) => ({
+  const metas: MetaSheetRow[] = (data?.metas || []).map((m: any) => ({
     comercial: normalizeName(m.comercial),
     metaAnual: Number(m.metaAnual || 0),
     metaOfertas: Number(m.metaOfertas || 0),
     metaVisitas: Number(m.metaVisitas || 0),
+    metaLlamadas: Number(m.metaLlamadas || 0), // ← NEW
   }));
   setMetasByYear(prev => ({ ...prev, [year]: metas }));
+}
+
+function metaLlamadasFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => m.comercial === normalizeName(comercial));
+  return rec?.metaLlamadas ?? 0;
 }
 
 function metaOfertasFor(comercial: string, year: number) {
@@ -2538,6 +2547,7 @@ const ScreenVisits = () => {
     return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
   }, [periodRows, mode, visitsModel, visitsPeriod]);
 
+  // Conteo del seleccionado
   const selectedCount = React.useMemo(() => {
     if (selectedComercial === "ALL") return data.total;
     return data.porComercial.find((r: any) => r.comercial === selectedComercial)?.count ?? 0;
@@ -2545,6 +2555,19 @@ const ScreenVisits = () => {
 
   const labelForMode =
     mode === "llamadas" ? "Llamadas" : mode === "reuniones" ? "Reuniones" : "Visitas";
+
+  // Año del período YYYY-MM
+  const yearForVisits = React.useMemo(
+    () => Number((data?.period || "").slice(0, 4)) || new Date().getFullYear(),
+    [data?.period]
+  );
+
+  // Meta del comercial seleccionado según el modo
+  const targetSelected = React.useMemo(() => {
+    if (mode === "llamadas") return metaLlamadasFor(selectedComercial, yearForVisits);
+    if (mode === "visitas")  return metaVisitasFor(selectedComercial, yearForVisits);
+    return 0; // reuniones: por ahora sin meta
+  }, [mode, selectedComercial, yearForVisits, metasByYear]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2567,25 +2590,6 @@ const ScreenVisits = () => {
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
-            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
-            <StatCard label="Meta">—</StatCard>
-          </div>
-
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>.
-          </div>
-        </section>
-
-        {/* Ranking */}
-        {visitsModel && (
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">
-              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
             </div>
 
             {/* Botones como en ciclo de ventas */}
@@ -2611,20 +2615,78 @@ const ScreenVisits = () => {
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
-              {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
+          </div>
+
+          {/* Tarjetas superiores */}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
+            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+
+            {/* Cumplimiento vs meta del Sheet (solo llamadas/visitas) */}
+            <StatCard label="Cumplimiento (vs meta del Sheet)">
+              {(() => {
+                const tgt = Number(targetSelected || 0);
+                if (tgt <= 0 || selectedComercial === "ALL" || mode === "reuniones") return "—";
+                const pct = Math.round((selectedCount / tgt) * 100);
                 return (
-                  <div key={row.comercial} className="text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">{i + 1}. {row.comercial}</div>
-                      <div className="tabular-nums text-gray-900">{row.count}</div>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: (row.count / Math.max(1, data.total)) * 100 + "%" }} />
+                  <span className="flex items-center gap-2">
+                    <span>{pct}% ({selectedCount}/{tgt})</span>
+                  </span>
+                );
+              })()}
+            </StatCard>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: archivo de eventos. Se clasifica por la columna <em>Asunto</em>. Metas desde Google Sheets (año {yearForVisits}).
+          </div>
+        </section>
+
+        {/* Ranking por comercial */}
+        {visitsModel && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">
+              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
+            </div>
+            <div className="space-y-2">
+              {onlySelected(
+                data.porComercial.map((row: any, i: number) => {
+                  // meta por comercial según modo
+                  const tgt =
+                    mode === "llamadas"
+                      ? metaLlamadasFor(row.comercial, yearForVisits)
+                      : mode === "visitas"
+                        ? metaVisitasFor(row.comercial, yearForVisits)
+                        : 0;
+
+                  const pct = tgt > 0 ? Math.round((row.count / tgt) * 100) : (mode === "reuniones" ? 0 : 0);
+                  return { ...row, rank: i + 1, tgt, pct };
+                }),
+                selectedComercial
+              ).map((row: any) => (
+                <div key={row.comercial} className="text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{row.rank}. {row.comercial}</div>
+                    <div className="tabular-nums text-gray-900">
+                      {mode === "reuniones" || row.tgt <= 0
+                        ? row.count
+                        : `${row.count}/${row.tgt} (${row.pct}%)`}
                     </div>
                   </div>
-                );
-              })}
+                  <div className="h-2 bg-gray-200 rounded mt-1">
+                    <div
+                      className="h-2 rounded bg-gray-700"
+                      style={{
+                        width: `${
+                          mode === "reuniones" || row.tgt <= 0
+                            ? Math.min(100, Math.round((row.count / Math.max(1, data.total)) * 100))
+                            : Math.min(100, row.pct)
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
