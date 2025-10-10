@@ -2349,30 +2349,6 @@ const totalsByCom = React.useMemo(() => {
             <div className="text-sm text-gray-500">
               Comercial: <b>{selectedComercial}</b>
             </div>
-
-            {/* Botonera tipo 'Ciclo de venta' */}
-            <div className="md:ml-auto">
-              <div className="inline-flex rounded-lg border overflow-hidden">
-                <button
-                  className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("completadas")}
-                >
-                  Completadas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("vencidas")}
-                >
-                  Vencidas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("pendientes")}
-                >
-                  Pendientes
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Tarjetas superiores */}
@@ -2398,6 +2374,29 @@ const totalsByCom = React.useMemo(() => {
               Ranking por comercial ({label.toLowerCase()})
             </div>
             <div className="space-y-2">
+          {/* Botonera tipo 'Ciclo de venta' */}
+            <div className="md:ml-auto">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("completadas")}
+                >
+                  Completadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("vencidas")}
+                >
+                  Vencidas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("pendientes")}
+                >
+                  Pendientes
+                </button>
+              </div>
+            </div>
 {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
   const denom = totalsByCom.get(row.comercial) || 0; // total del comercial
   const pct = denom > 0 ? Math.round((row.count / denom) * 100) : 0; // % del comercial
