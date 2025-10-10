@@ -527,31 +527,42 @@ function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pen
 }
 
 // ================== ACTIVIDADES (archivo independiente) ==================
-// Reemplaza TODA la función parseActivitiesFromSheet por esta
-
 function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("ACTIVIDADES: hoja vacía");
 
-  // Detectar encabezado (solo heurística para saltar títulos iniciales)
-  const normH = (s: any) => norm(String(s));
+  // ——— detectar fila de encabezados (sin depender de posiciones) ———
+  const hnorm = (v: any) => norm(String(v));
   let headerRow = 0, best = -1;
   for (let r = 0; r < Math.min(40, A.length); r++) {
-    const H = (A[r] || []).map(normH);
+    const H = (A[r] || []).map(hnorm);
     let sc = 0;
-    if (H.some(h => h.includes("creado") || h.includes("owner") || h.includes("comercial"))) sc++;
-    if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
-    if (H.some(h => h.includes("fecha"))) sc++;
+    if (H.some(h => /creado|owner|propietario|comercial|vendedor|ejecutivo/.test(h))) sc += 2;
+    if (H.some(h => /estado|status/.test(h))) sc += 1;
+    if (H.some(h => /fecha/.test(h))) sc += 1;
     if (sc > best) { best = sc; headerRow = r; }
   }
 
-  // Índices fijos por columnas físicas (A=0): B=1, D=3, G=6, M=12
-  const idxOwner   = 1;  // B: Creado por (comercial)
-  const idxFecha   = 3;  // D: Fecha (para calcular vencidas/pendientes si está OPEN)
-  const idxCreated = 6;  // G: Fecha de creación  ← para filtrar por mes
-  const idxEstado  = 12; // M: Estado (completed/open/…)
+  const headers = (A[headerRow] || []).map(hnorm);
+  const findIdx = (...cands: string[]) => {
+    const C = cands.map(hnorm);
+    for (let c = 0; c < headers.length; c++) {
+      const h = headers[c];
+      if (C.some(k => h.includes(k))) return c;
+    }
+    return -1;
+  };
 
-  // Día de hoy (UTC, sin hora)
+  // columnas por nombre (no por letra):
+  const idxOwner   = findIdx("creado por","propietario","owner","comercial","vendedor","ejecutivo");
+  const idxFecha   = findIdx("fecha", "fecha fin", "fecha termino", "due date", "end date");    // para vencidas/pendientes
+  const idxCreated = findIdx("fecha de creacion","fecha creación","created","created date");     // para filtrar por mes
+  const idxEstado  = findIdx("estado","status");                                                 // completed / open
+
+  if (idxOwner < 0) throw new Error(`ACTIVIDADES: falta columna Comercial/Propietario en hoja ${sheetName}`);
+  if (idxEstado < 0) console.warn("ACTIVIDADES: no veo columna de Estado; clasificaré solo por fechas.");
+
+  // hoy en UTC
   const todayUTC = new Date(Date.UTC(
     new Date().getUTCFullYear(),
     new Date().getUTCMonth(),
@@ -561,51 +572,56 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   type RowAct = {
     comercial: string;
     status: "completadas" | "vencidas" | "pendientes" | "otros";
-    fecha?: Date | null;        // D
-    created?: Date | null;      // G
-    createdYM?: string;         // YYYY-MM (desde G)
+    fecha?: Date | null;      // Fecha (vencidas/pendientes cuando esté OPEN)
+    created?: Date | null;    // Fecha de creación (para agrupar por mes)
+    createdYM?: string;       // YYYY-MM (desde created)
     raw: any[];
   };
 
   const rows: RowAct[] = [];
-  let currentComercial = "";
+  let carryOwner = ""; // arrastre del comercial
 
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
+    // descarta filas vacías
     if (row.every(v => String(v).trim() === "")) continue;
 
-    // arrastre de comercial (B)
+    // actualizar “arrastre” del comercial si viene explícito
     const rawOwner = row[idxOwner];
     if (rawOwner != null && String(rawOwner).trim() !== "") {
-      currentComercial = mapComercial(rawOwner);
-      // si es “título” del bloque (solo B con texto), saltar
+      carryOwner = mapComercial(rawOwner);
+      // si es título de bloque (solo trae el owner), no es dato
       const onlyOwner = row.filter((v:any, c:number)=> c!==idxOwner && String(v??"").trim()!=="").length===0;
       if (onlyOwner) continue;
     }
-    const comercial = currentComercial;
-    if (!comercial || comercial === "(Sin comercial)") continue;
 
-    // Columnas de fecha
-    const fecha   = parseDateCell(row[idxFecha]);    // D (vencida/pendiente si OPEN)
-    const created = parseDateCell(row[idxCreated]);  // G (filtrado mensual)
+    const comercial = carryOwner;
+    if (!comercial || comercial === "(Sin comercial)") continue; // descarta “sin comercial”
+
+    const fecha   = idxFecha   >= 0 ? parseDateCell(row[idxFecha])   : null;
+    const created = idxCreated >= 0 ? parseDateCell(row[idxCreated]) : null;
+
     let createdYM = "";
-    if (created) {
-      const d = created;
-      createdYM = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+    if (created instanceof Date && !isNaN(created.getTime())) {
+      createdYM = `${created.getUTCFullYear()}-${String(created.getUTCMonth()+1).padStart(2,"0")}`;
     }
 
-    // Estado (M)
+    // clasifica estado:
     const estadoRaw = String(row[idxEstado] ?? "");
     let status: "completadas" | "vencidas" | "pendientes" | "otros" = "pendientes";
 
     if (/completed/i.test(estadoRaw)) {
       status = "completadas";
     } else if (/open/i.test(estadoRaw)) {
-      // OPEN → usar D para saber si vencida/pendiente (0 días cuenta como pendiente)
+      // OPEN: usa “fecha” para saber si ya venció
+      if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
+      else status = "pendientes"; // incluye 0 días
+    } else if (estadoRaw) {
+      // otro valor: cae a fechas si existen
       if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
       else status = "pendientes";
     } else {
-      // Otro valor → misma regla por fecha D
+      // sin estado: intenta por fechas
       if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
       else status = "pendientes";
     }
@@ -615,7 +631,7 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
 
   if (!rows.length) throw new Error(`ACTIVIDADES: sin filas válidas en ${sheetName}`);
 
-  // Periodos mensuales disponibles con base en G (fecha de creación).
+  // períodos (YYYY-MM) basados en “Fecha de creación”
   const periods = Array.from(new Set(rows.map(r => r.createdYM || "")))
     .filter(Boolean)
     .sort((a,b)=>a.localeCompare(b));
