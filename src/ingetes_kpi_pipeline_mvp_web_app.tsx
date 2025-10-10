@@ -2298,11 +2298,7 @@ const selected = useMemo(() => {
 const ScreenActivities = () => {
   const [mode, setMode] = React.useState<"completadas" | "vencidas" | "pendientes">("completadas");
 
-  const data = React.useMemo(() => {
-    if (!activitiesModel) return { total: 0, porComercial: [] as any[] };
-    const rows = activitiesModel.rows || [];
-
-  // Totales por comercial (todas las actividades) para el denominador del %
+// Totales por comercial (todas las actividades) para el denominador del %
 const totalsByCom = React.useMemo(() => {
   const m = new Map<string, number>();
   const rows = activitiesModel?.rows || [];
@@ -2312,6 +2308,10 @@ const totalsByCom = React.useMemo(() => {
   }
   return m;
 }, [activitiesModel]);
+  
+  const data = React.useMemo(() => {
+    if (!activitiesModel) return { total: 0, porComercial: [] as any[] };
+    const rows = activitiesModel.rows || [];
 
     const by = new Map<string, number>();
     for (const r of rows) {
