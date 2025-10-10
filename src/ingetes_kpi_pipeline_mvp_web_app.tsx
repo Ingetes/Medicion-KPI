@@ -1425,6 +1425,8 @@ export default function IngetesKPIApp() {
   const [cycleMode, setCycleMode] = useState<"all" | "won" | "offers">("all");
   const [offersPeriod, setOffersPeriod] = useState<string>("");
   const [visitsPeriod, setVisitsPeriod] = useState<string>("");
+  const [visitsMode, setVisitsMode] =
+  React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
   const [selectedComercial, setSelectedComercial] = useState("ALL");
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -2518,8 +2520,9 @@ const ScreenActivities = () => {
 
 // === ScreenVisits (llamadas/visitas/reuniones desde ASUNTO) ===
 const ScreenVisits = () => {
-  const [mode, setMode] = React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
-
+// ✅ USAR el estado global
+const mode = visitsMode;
+const setMode = setVisitsMode;
   // Filas del período seleccionado
   const periodRows = React.useMemo(() => {
     if (!visitsModel) return [] as any[];
@@ -2581,15 +2584,15 @@ const ScreenVisits = () => {
 
             <div className="text-sm text-gray-500">
               Periodo:
-              <select
-                className="ml-2 border rounded px-2 py-1 text-sm"
-                value={visitsPeriod}
-                onChange={(e) => setVisitsPeriod(e.target.value)}
-              >
-                {(data.periods || []).map((p: string) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+<select
+  className="ml-2 border rounded px-2 py-1 text-sm"
+  value={visitsPeriod}
+  onChange={(e) => setVisitsPeriod(e.target.value)}
+>
+  {(data.periods || []).map((p: string) => (
+    <option key={p} value={p}>{p}</option>
+  ))}
+</select>
             </div>
           </div>
 
