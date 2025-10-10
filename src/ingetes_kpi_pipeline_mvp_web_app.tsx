@@ -515,8 +515,98 @@ function buildVisitsModelFromWorkbook(wb: XLSX.WorkBook) {
   throw new Error("VISITAS: no pude interpretar ninguna hoja. "+errs.join(" | "));
 }
 
-// ================== DETALLADO → OFERTAS ==================
+// ================== ACTIVIDADES (archivo independiente) ==================
+// Clasifica estado textual en una de tres categorías esperadas
+function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pendientes" | "otros" {
+  const s = norm(raw || "");
+  if (/(^|[^a-z])comp(?:let|leta|leto|leted|done)/i.test(s)) return "completadas";
+  if (/(vencid|overdue|atrasad)/i.test(s)) return "vencidas";
+  if (/(pendi|open|abiert)/i.test(s)) return "pendientes";
+  return "otros";
+}
 
+// Lee una hoja de ACTIVIDADES (sin suposiciones de columnas exactas)
+// Necesitamos: Comercial/Propietario y Estado/Status (lo demás es opcional)
+function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
+  const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  if (!A.length) throw new Error("ACTIVIDADES: hoja vacía");
+
+  // Detectar fila de encabezados
+  const scoreHead = (row: any[]) => {
+    const H = row.map(norm);
+    let sc = 0;
+    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor") || h.includes("ejecutivo"))) sc++;
+    if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
+    return sc;
+  };
+  let headerRow = 0, best = -1;
+  for (let r = 0; r < Math.min(40, A.length); r++) {
+    const sc = scoreHead(A[r] || []);
+    if (sc > best) { best = sc; headerRow = r; }
+  }
+
+  const headers = A[headerRow] || [];
+  const findIdx = (...cands: string[]) => {
+    const NC = cands.map(norm);
+    for (let c = 0; c < headers.length; c++) {
+      const h = norm(headers[c]);
+      if (NC.some(k => h.includes(k))) return c;
+    }
+    return -1;
+  };
+
+  const idxOwner  = findIdx("comercial", "propietario", "owner", "vendedor", "ejecutivo");
+  const idxStatus = findIdx("estado", "status");
+
+  if (idxOwner  < 0) throw new Error(`ACTIVIDADES: falta columna Comercial/Propietario en hoja ${sheetName}`);
+  if (idxStatus < 0) throw new Error(`ACTIVIDADES: falta columna Estado/Status en hoja ${sheetName}`);
+
+  const rows: Array<{ comercial: string; status: "completadas"|"vencidas"|"pendientes"|"otros"; raw: any[] }> = [];
+  let currentComercial = "";
+
+  for (let r = headerRow + 1; r < A.length; r++) {
+    const row = A[r] || [];
+    if (row.every(v => String(v).trim() === "")) continue;
+
+    // evitar subtotales / totales / encabezados repetidos
+    const line = norm((row.join(" ")) || "");
+    if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
+    if (scoreHead(row) >= 2) continue;
+
+    // arrastre de comercial
+    const rawOwner = row[idxOwner];
+    if (rawOwner != null && String(rawOwner).trim() !== "") {
+      currentComercial = mapComercial(rawOwner);
+      // si es título de bloque (solo comercial), saltar
+      const onlyOwner = row.filter((v:any, c:number)=> c!==idxOwner && String(v??"").trim()!=="").length===0;
+      if (onlyOwner) continue;
+    }
+    const comercial = currentComercial;
+    if (!comercial) continue;
+
+    const statusText = String(row[idxStatus] ?? "");
+    const status = classifyActivityStatus(statusText);
+
+    rows.push({ comercial, status, raw: row });
+  }
+
+  if (!rows.length) throw new Error(`ACTIVIDADES: sin filas válidas en ${sheetName}`);
+  return { rows, sheetName };
+}
+
+function buildActivitiesModelFromWorkbook(wb: XLSX.WorkBook) {
+  const errs: string[] = [];
+  for (const sn of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[sn];
+      if (!ws) continue;
+      return parseActivitiesFromSheet(ws, sn);
+    } catch(e:any) { errs.push(`${sn}: ${e?.message || e}`); }
+  }
+  throw new Error("ACTIVIDADES: no pude interpretar ninguna hoja. " + errs.join(" | "));
+}
+
+// ================== DETALLADO → OFERTAS ==================
 type OfferRow = {
   comercial: string;
   fechaOferta: Date;
@@ -1271,6 +1361,8 @@ export default function IngetesKPIApp() {
   const [fileDetailName, setFileDetailName] = useState("");
   const [fileVisitsName, setFileVisitsName] = useState("");
   const [filePivotName, setFilePivotName] = useState("");
+  const [fileActivitiesName, setFileActivitiesName] = useState("");
+  const [activitiesModel, setActivitiesModel] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
   const [offersModel, setOffersModel] = useState<any>(null);
   const [visitsModel, setVisitsModel] = useState<any>(null);
@@ -1519,6 +1611,17 @@ async function onVisitsFile(f: File) {
   } catch (e:any) {
     setVisitsModel(null);
     setError(prev => (prev ? prev + "\n" : "") + `Visitas: ${e?.message || e}`);
+  }
+}
+async function onActivitiesFile(f: File) {
+  setError(""); setFileActivitiesName(f.name);
+  try {
+    const wb = await readWorkbookRobust(f);
+    const am = buildActivitiesModelFromWorkbook(wb);
+    setActivitiesModel(am);
+  } catch (e:any) {
+    setActivitiesModel(null);
+    setError(prev => (prev ? prev + "\n" : "") + `Actividades: ${e?.message || e}`);
   }
 }
 async function onPivotFile(f: File) {
@@ -2174,23 +2277,17 @@ const selected = useMemo(() => {
 };
 
 // === ScreenVisits (solo visitas + meeting) ===
-const ScreenVisits = () => {
-  // Filas del período seleccionado
-  const periodRows = React.useMemo(() => {
-    if (!visitsModel) return [] as any[];
-    const periods: string[] = visitsModel.periods || [];
-    const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods[periods.length - 1] || "");
-    return (visitsModel.rows || []).filter((r: any) => r.ym === sel);
-  }, [visitsModel, visitsPeriod]);
+// === ScreenActivities (desde archivo ACTIVIDADES) ===
+const ScreenActivities = () => {
+  const [mode, setMode] = React.useState<"completadas" | "vencidas" | "pendientes">("completadas");
 
-  // Cuenta únicamente "visita ..." o "meeting" mirando ASUNTO
   const data = React.useMemo(() => {
-    const by = new Map<string, number>();
-    const rx = /(?:\bvisita|\bvisit|visita a|visita cliente|visita comercial|visita planta|\bmeeting)/i;
+    if (!activitiesModel) return { total: 0, porComercial: [] as any[] };
+    const rows = activitiesModel.rows || [];
 
-    for (const r of periodRows) {
-      const s = String(r.asunto || "");
-      if (!rx.test(s)) continue;     // ← SOLO visitas o meeting
+    const by = new Map<string, number>();
+    for (const r of rows) {
+      if (r.status !== mode) continue;                 // filtra por estado elegido
       by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
     }
 
@@ -2199,123 +2296,92 @@ const ScreenVisits = () => {
       .sort((a, b) => b.count - a.count);
 
     const total = porComercial.reduce((a, x) => a + x.count, 0);
-    const sel = (visitsModel?.periods || []).includes(visitsPeriod)
-      ? visitsPeriod
-      : ((visitsModel?.periods || []).slice(-1)[0] || "");
+    return { total, porComercial };
+  }, [activitiesModel, mode]);
 
-    return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
-  }, [periodRows, visitsModel, visitsPeriod]);
-
-  // Conteo del comercial seleccionado
   const selectedCount = React.useMemo(() => {
     if (selectedComercial === "ALL") return data.total;
     return data.porComercial.find((r: any) => r.comercial === selectedComercial)?.count ?? 0;
   }, [data, selectedComercial]);
 
-  // Año del período para metas → metaVisitas
-  const yearForVisits = React.useMemo(
-    () => Number((data?.period || "").slice(0, 4)) || new Date().getFullYear(),
-    [data?.period]
-  );
+  const label =
+    mode === "completadas" ? "Completadas"
+    : mode === "vencidas" ? "Vencidas"
+    : "Pendientes";
 
-  // Metas
-  const [metasMap, setMetasMap] = React.useState<Map<string, any>>(new Map());
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { metas } = await fetchMetas(yearForVisits);
-        const map = new Map<string, any>();
-        metas.forEach((m: any) => map.set(normName(m.comercial), m));
-        if (!cancelled) setMetasMap(map);
-      } catch {
-        if (!cancelled) setMetasMap(new Map());
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [yearForVisits]);
-
-  const targetSelected = metasMap.get(normName(selectedComercial))?.metaVisitas ?? 0;
+  // Totales del archivo para el denominador (completadas/total, etc.)
+  const totalFileCount = React.useMemo(() => Number(activitiesModel?.rows?.length || 0), [activitiesModel]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Visitas" />
+      <BackBar title="KPI • Actividades" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         <section className="p-4 bg-white rounded-xl border">
-          {/* Filtros */}
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
             <div className="text-sm text-gray-500">
               Comercial: <b>{selectedComercial}</b>
             </div>
 
-            <div className="text-sm text-gray-500">
-              Periodo:
-              <select
-                className="ml-2 border rounded px-2 py-1 text-sm"
-                value={visitsPeriod}
-                onChange={(e) => setVisitsPeriod(e.target.value)}
-              >
-                {(data.periods || []).map((p: string) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+            {/* Botonera tipo 'Ciclo de venta' */}
+            <div className="md:ml-auto">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("completadas")}
+                >
+                  Completadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("vencidas")}
+                >
+                  Vencidas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("pendientes")}
+                >
+                  Pendientes
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Tarjetas */}
+          {/* Tarjetas superiores */}
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label="Visitas del período (compañía)">{data.total}</StatCard>
-            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
-            <StatCard label="Cumplimiento (vs meta del Sheet)">
-              {(() => {
-                const pct = targetSelected > 0
-                  ? Math.round((selectedCount / targetSelected) * 100)
-                  : (selectedCount > 0 ? 100 : 100);
-                const st = offerStatus(selectedCount, targetSelected);
-                return (
-                  <span className="flex items-center gap-2">
-                    <span>{pct}% ({selectedCount}/{targetSelected})</span>
-                    <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-                  </span>
-                );
-              })()}
+            <StatCard label={`${label} (compañía)`}>
+              {data.total} / {totalFileCount}
             </StatCard>
+            <StatCard label="Del comercial seleccionado">
+              {selectedCount}
+            </StatCard>
+            <StatCard label="Meta">{/* sin meta por ahora */}—</StatCard>
           </div>
 
           <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo de eventos. Se cuenta solo si el <em>Asunto</em> contiene
-            “visita … / visit …” o “meeting”.
+            Fuente: archivo <b>ACTIVIDADES</b>. Se clasifica por la columna <em>Estado/Status</em>.
           </div>
         </section>
 
         {/* Ranking */}
-        {visitsModel && (
+        {activitiesModel && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">
-              Ranking por comercial (visitas) · {data.period}
+              Ranking por comercial ({label.toLowerCase()})
             </div>
             <div className="space-y-2">
               {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-                const target = metasMap.get(normName(row.comercial))?.metaVisitas ?? 0;
-                const pct = target > 0
-                  ? Math.round((row.count / target) * 100)
-                  : (row.count > 0 ? 100 : 100);
-                const pctBar = Math.min(100, pct);
-                const st = offerStatus(row.count, target);
-
+                const pct = totalFileCount > 0 ? Math.round((row.count / totalFileCount) * 100) : 0;
                 return (
                   <div key={row.comercial} className="text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{i + 1}. {row.comercial}</div>
-                      <div className="flex items-center gap-2">
-                        <span className="tabular-nums text-gray-900">
-                          {pct}% ({row.count}/{target})
-                        </span>
-                        <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                      <div className="tabular-nums text-gray-900">
+                        {row.count} ({pct}%)
                       </div>
                     </div>
                     <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+                      <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, pct) + "%" }} />
                     </div>
                   </div>
                 );
@@ -2911,6 +2977,17 @@ const kpi = React.useMemo(() => {
           />
           <div className="text-xs text-gray-500 mt-1">{fileVisitsName || "Sin archivo"}</div>
         </div>
+        <div className="p-4 bg-white rounded-xl border">
+  <div className="font-semibold">Archivo ACTIVIDADES</div>
+  <input
+    type="file"
+    accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
+    onChange={(e) => e.target.files && onActivitiesFile(e.target.files[0])}
+    className="block text-sm"
+  />
+  <div className="text-xs text-gray-500 mt-1">{fileActivitiesName || "Sin archivo"}</div>
+</div>
+
       </section>
 
         {/* Tarjetas de acceso a KPIs */}
@@ -2962,13 +3039,13 @@ const kpi = React.useMemo(() => {
           <div className="p-4 bg-white rounded-xl border flex flex-col">
   <div className="font-semibold">📌 Actividades</div>
   <p className="text-xs text-gray-500 mt-1">Fuente: archivo VISITAS (Asunto)</p>
-  <button
-    className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
-    onClick={() => setRoute("KPI_ACTIVITIES")}
-    disabled={!visitsModel}
-  >
-    Ver KPI
-  </button>
+<button
+  className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
+  onClick={() => setRoute("KPI_ACTIVITIES")}
+  disabled={!activitiesModel}
+>
+  Ver KPI
+</button>
 </div>
         </section>
       </main>
