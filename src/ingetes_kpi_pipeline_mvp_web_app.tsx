@@ -640,6 +640,21 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   return { rows, sheetName };
 }
 
+function buildActivitiesModelFromWorkbook(wb: XLSX.WorkBook) {
+  const errs: string[] = [];
+  for (const sn of wb.SheetNames) {
+    try {
+      const ws = wb.Sheets[sn];
+      if (!ws) continue;
+      // usa tu parser que ya clasifica con fechas (fin/inicio) y, si falta, por Estado
+      return parseActivitiesFromSheet(ws, sn);
+    } catch (e: any) {
+      errs.push(`${sn}: ${e?.message || e}`);
+    }
+  }
+  throw new Error("ACTIVIDADES: no pude interpretar ninguna hoja. " + errs.join(" | "));
+}
+
 // ================== DETALLADO → OFERTAS ==================
 type OfferRow = {
   comercial: string;
@@ -1651,7 +1666,7 @@ async function onActivitiesFile(f: File) {
   setError(""); setFileActivitiesName(f.name);
   try {
     const wb = await readWorkbookRobust(f);
-    const am = buildActivitiesModelFromWorkbook(wb);
+    const am = buildActivitiesModelFromWorkbook(wb); // ← ahora existe
     setActivitiesModel(am);
   } catch (e:any) {
     setActivitiesModel(null);
