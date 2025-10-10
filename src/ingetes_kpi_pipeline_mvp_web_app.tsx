@@ -526,46 +526,31 @@ function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pen
   return "otros";
 }
 
-// Prioriza FECHAS: fin/vencimiento para saber vencidas; si no hay fechas válidas, cae a Estado/Status.
+// ================== ACTIVIDADES (archivo independiente) ==================
+// Reemplaza TODA la función parseActivitiesFromSheet por esta
+
 function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
+  // Leemos como matriz, sin asumir tipos
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("ACTIVIDADES: hoja vacía");
 
-  // Detectar fila de encabezados (buscamos owner + alguna fecha o status)
-  const scoreHead = (row: any[]) => {
-    const H = row.map(norm);
-    let sc = 0;
-    if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor") || h.includes("ejecutivo"))) sc++;
-    if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
-    if (H.some(h => h.includes("fecha") || h.includes("inicio") || h.includes("fin") || h.includes("vencim") || h.includes("deadline") || h.includes("start") || h.includes("end") || h.includes("due"))) sc++;
-    return sc;
-  };
+  // Buscamos una fila probable de encabezados, pero IGUAL forzaremos B/D/M
+  const normH = (s: any) => norm(String(s));
   let headerRow = 0, best = -1;
   for (let r = 0; r < Math.min(40, A.length); r++) {
-    const sc = scoreHead(A[r] || []);
+    const H = (A[r] || []).map(normH);
+    // heurística simple: que aparezca algo tipo “creado”, “estado”, “fecha”
+    let sc = 0;
+    if (H.some(h => h.includes("creado") || h.includes("owner") || h.includes("comercial"))) sc++;
+    if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
+    if (H.some(h => h.includes("fecha"))) sc++;
     if (sc > best) { best = sc; headerRow = r; }
   }
 
-  const headers = A[headerRow] || [];
-  const findIdx = (...cands: string[]) => {
-    const NC = cands.map(norm);
-    for (let c = 0; c < headers.length; c++) {
-      const h = norm(headers[c]);
-      if (NC.some(k => h.includes(k))) return c;
-    }
-    return -1;
-  };
-
-  // Columnas clave
-  const idxOwner   = findIdx("creado por", "comercial", "propietario", "owner", "vendedor", "ejecutivo");
-  const idxStatus  = findIdx("estado", "status"); // opcional, solo si no hay fechas
-
-  // FECHAS (todas opcionales)
-  const idxCre     = findIdx("fecha de creacion", "fecha creación", "fecha creacion", "created", "creation");
-  const idxInicio  = findIdx("inicio", "fecha inicio", "start", "start date", "fecha de inicio");
-  const idxFin     = findIdx("fin", "fecha fin", "end", "end date", "fecha de fin", "vencim", "vencimiento", "deadline", "due date");
-
-  if (idxOwner < 0) throw new Error(`ACTIVIDADES: falta columna Comercial/Propietario en hoja ${sheetName}`);
+  // Forzamos posiciones físicas (A=0, B=1, C=2, D=3, …, M=12)
+  const idxOwner  = 1;  // B: Creado por
+  const idxFecha  = 3;  // D: Fecha
+  const idxEstado = 12; // M: Estado
 
   const todayUTC = new Date(Date.UTC(
     new Date().getUTCFullYear(),
@@ -578,59 +563,42 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
 
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
+    // fila vacía → continuar
     if (row.every(v => String(v).trim() === "")) continue;
 
-    // evita totales/subtotales o nuevas cabeceras
-    const line = norm((row.join(" ")) || "");
-    if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
-    if (scoreHead(row) >= 2) continue;
-
-    // arrastre de comercial
+    // arrastre del comercial (columna B)
     const rawOwner = row[idxOwner];
     if (rawOwner != null && String(rawOwner).trim() !== "") {
       currentComercial = mapComercial(rawOwner);
-      // si es título de bloque (solo comercial), saltar
+      // si la fila es solo el título del comercial, saltamos
       const onlyOwner = row.filter((v:any, c:number)=> c!==idxOwner && String(v??"").trim()!=="").length===0;
       if (onlyOwner) continue;
     }
     const comercial = currentComercial;
     if (!comercial) continue;
 
-    // Leer fechas (opcionales)
-    const fCre   = idxCre    >= 0 ? parseDateCell(row[idxCre])    : null;
-    const fIni   = idxInicio >= 0 ? parseDateCell(row[idxInicio]) : null;
-    const fFin   = idxFin    >= 0 ? parseDateCell(row[idxFin])    : null;
+    // estado (columna M)
+    const estadoRaw = String(row[idxEstado] ?? "");
+    const est = norm(estadoRaw);
 
-    // Regla de negocio:
-    // - "completadas": cuando hay fecha de FIN (entregada/realizada/cerrada)
-    // - "vencidas":    hoy > fin y NO está completada (sin fecha fin)
-    // - "pendientes":  el resto (incluye futuras por inicio > hoy)
+    // fecha (columna D) → puede venir serial, texto o Date
+    const fecha = parseDateCell(row[idxFecha]); // ya devuelve UTC sin hora o null
+
     let status: "completadas" | "vencidas" | "pendientes" | "otros" = "pendientes";
 
-    if (fFin) {
+    // Regla pedida:
+    // - estado "completed"  => completadas
+    // - estado "open"       => mirar D: si hoy > D ⇒ vencidas; si hoy <= D ⇒ pendientes (0 días también pendientes)
+    // - cualquier otro      => intentamos la misma lógica de fecha; si no hay fecha, queda "pendientes"
+    if (/completed/i.test(estadoRaw)) {
       status = "completadas";
-    } else if (fFin === null && idxFin >= 0) {
-      // si existe la columna de fin/vencimiento pero la celda está vacía:
-      // si teníamos fecha de fin esperada y ya pasó, vencida. Si no hay fin definida, queda pendiente.
-      // (no tenemos "fecha de fin esperada" por fila; así que solo marcamos vencida si la columna existe
-      //  y su valor parseado fue inválido pero había texto de fecha → caso muy raro. En la práctica,
-      //  dejamos "pendientes".)
-      status = "pendientes";
-    }
-
-    // Si NO hay fecha fin válida, pero sí hay una "fecha de fin/vencimiento" en texto y es menor a hoy → vencida
-    if (!fFin && idxFin >= 0) {
-      const rawFin = String(row[idxFin] ?? "").trim();
-      if (rawFin) {
-        const parsedFin = parseDateCell(rawFin);
-        if (parsedFin && parsedFin.getTime() < todayUTC.getTime()) status = "vencidas";
-      }
-    }
-
-    // Si NO hay fecha fin ni vencimiento claro y tenemos Estado/Status, úsalo como fallback
-    if (!fFin && status === "pendientes" && idxStatus >= 0) {
-      const st = classifyActivityStatus(String(row[idxStatus] ?? ""));
-      if (st !== "otros") status = st;
+    } else if (/open/i.test(estadoRaw)) {
+      if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
+      else status = "pendientes";
+    } else {
+      // fallback si llega otro valor en M
+      if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
+      else status = "pendientes";
     }
 
     rows.push({ comercial, status, raw: row });
