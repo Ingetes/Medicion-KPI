@@ -1458,7 +1458,8 @@ type MetaSheetRow = {
   metaAnual: number;
   metaOfertas: number;
   metaVisitas: number;
-  metaLlamadas: number;   // ← NEW
+  metaLlamadas: number;
+  metaWinRate: number;   // ← NUEVO (%)
 };
 
 const [metasByYear, setMetasByYear] = useState<Record<number, MetaSheetRow[]>>({});
@@ -1471,13 +1472,14 @@ async function ensureMetasForYear(year: number) {
   const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
-  const metas: MetaSheetRow[] = (data?.metas || []).map((m: any) => ({
-    comercial: normalizeName(m.comercial),
-    metaAnual: Number(m.metaAnual || 0),
-    metaOfertas: Number(m.metaOfertas || 0),
-    metaVisitas: Number(m.metaVisitas || 0),
-    metaLlamadas: Number(m.metaLlamadas || 0), // ← NEW
-  }));
+const metas: MetaSheetRow[] = (data?.metas || []).map((m: any) => ({
+  comercial: normalizeName(m.comercial),
+  metaAnual: Number(m.metaAnual || 0),
+  metaOfertas: Number(m.metaOfertas || 0),
+  metaVisitas: Number(m.metaVisitas || 0),
+  metaLlamadas: Number(m.metaLlamadas || 0),
+  metaWinRate: Number(m.metaWinRate || 0),   // ← NUEVO
+}));
   setMetasByYear(prev => ({ ...prev, [year]: metas }));
 }
 
@@ -1486,7 +1488,11 @@ function metaLlamadasFor(comercial: string, year: number) {
   const rec = arr.find(m => m.comercial === normalizeName(comercial));
   return rec?.metaLlamadas ?? 0;
 }
-
+function metaWinRateFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => m.comercial === normalizeName(comercial));
+  return rec?.metaWinRate ?? 0);
+}
 function metaOfertasFor(comercial: string, year: number) {
   const arr = metasByYear[year] || [];
   const rec = arr.find(m => m.comercial === normalizeName(comercial));
