@@ -1801,7 +1801,6 @@ const openPlusLostAmountsByComercial = React.useMemo(() => {
   return m;
 }, [detail]);
 
-
 const ScreenPipeline = () => {
   if (!pivot) {
     return (
@@ -1817,27 +1816,29 @@ const ScreenPipeline = () => {
   }
 
   // Tomamos metas del año que usas en Ajustes (settingsYear)
-const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100; // 0..1
-
+  const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100; // 0..1
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
 
   // Asegura que tenemos las metas de ese año
   React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
 
   // Calcula: won (cerrado), remaining (faltante) y needQuote (faltante/0.2)
-const kpi = React.useMemo(
-  () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
-  [pivot, goalFor, WIN_RATE]
-);
+  const kpi = React.useMemo(
+    () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
+    [pivot, goalFor, WIN_RATE]
+  );
 
   // Comodines seleccionados
   const selected = React.useMemo(() => {
     if (selectedComercial === "ALL") return null;
-    return kpi.porComercial.find(r => r.comercial === selectedComercial) ||
-           { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 };
+    return (
+      kpi.porComercial.find(r => r.comercial === selectedComercial) ||
+      { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 }
+    );
   }, [kpi, selectedComercial]);
 
-  const fmtCOP = (n: number) => (Number(n)||0).toLocaleString("es-CO", { style:"currency", currency:"COP", maximumFractionDigits:0 });
+  const fmtCOP = (n: number) =>
+    (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 
   // Para barras
   const maxBar = React.useMemo(() => {
@@ -1850,212 +1851,227 @@ const kpi = React.useMemo(
       <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header */}
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-base text-gray-700 font-semibold">
-      Comercial: <b>{selectedComercial}</b>
-    </div>
-    <div className="text-base text-gray-700 font-semibold">
-      Año (Sheet): <b>{settingsYear}</b>
-    </div>
-<div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
-  Win Rate asumido:
-  <input
-    type="number"
-    min={1}
-    max={100}
-    step={1}
-    className="w-20 border rounded-lg px-2 py-1 text-sm text-right"
-    value={assumedWinRate}
-    onChange={(e) => setAssumedWinRate(Number(e.target.value || 0))}
-    title="Porcentaje de conversión esperado de cotizaciones a ganadas"
-  />
-  <span>%</span>
-</div>
-  </div>
-
-  {(() => {
-    const isAll = selectedComercial === "ALL";
-    const sel = isAll
-      ? null
-      : (kpi.porComercial.find(r => r.comercial === selectedComercial) ||
-         { comercial: selectedComercial, wonCOP: 0, goal: metaAnualFor(selectedComercial, settingsYear), remaining: 0, needQuote: 0 });
-
-    // Montos abiertos
-    const openAmtSel = isAll
-      ? Array.from(openAmountsByComercial.values()).reduce((a, b) => a + b, 0)
-      : (openAmountsByComercial.get(nameKey(selectedComercial)) || 0);
-
-    const needSel = isAll ? kpi.total.needQuote : sel?.needQuote || 0;
-
-    const pctOpenSel = needSel > 0 ? Math.min(100, Math.round((openAmtSel / needSel) * 100)) : 0;
-    const colorClassSel = coverageColor(needSel > 0 ? openAmtSel / needSel : 0);
-
-    const remainingVal = isAll ? kpi.total.remaining : sel?.remaining || 0;
-
-    return (
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Faltante */}
-        <div className="bg-white p-4 rounded-lg border text-center">
-          <div className="text-sm text-gray-500 mb-1">
-            {isAll ? "Faltante (compañía)" : "Faltante (comercial)"}
-          </div>
-          <div className="text-xl font-bold text-gray-800">
-            {fmtCOP(remainingVal)}
-          </div>
-        </div>
-
-        {/* Cotización necesaria */}
-        <div className="bg-white p-4 rounded-lg border text-center">
-          <div className="text-sm text-gray-500 mb-1">
-            {isAll ? "Cotización necesaria (compañía)" : "Cotización necesaria (comercial)"}
-          </div>
-          <div className="text-xl font-bold text-gray-800">
-            {fmtCOP(needSel)}
-          </div>
-        </div>
-
-        {/* Avance con semáforo */}
-        <div className="bg-white p-4 rounded-lg border text-center">
-          <div className="text-sm text-gray-500 mb-1">
-            {isAll ? "Avance total (abiertas vs necesita)" : "Avance (abiertas vs necesita)"}
-          </div>
-          <div className="text-xl font-bold flex items-center justify-center gap-2 text-gray-800">
-            <span>{pctOpenSel}%</span>
-            <span className={`inline-block w-5 h-5 rounded-full ${colorClassSel}`} />
-          </div>
-        </div>
-      </div>
-    );
-  })()}
-
-  <div className="text-xs text-gray-500 mt-3">
-    Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
-  </div>
-</section>
-
-{/* Ranking visual */}
-<section className="p-4 bg-white rounded-xl border">
-  <div className="mb-3 font-semibold text-gray-800">
-    Ranking por comercial (Forecast necesario para cumplir meta)
-  </div>
-
-  <div className="grid grid-cols-1 gap-3">
-    {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
-      const pctBar = Math.min(
-        Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100),
-        100
-      );
-
-      const fmtCOP = (n: number) =>
-        (Number(n) || 0).toLocaleString("es-CO", {
-          style: "currency",
-          currency: "COP",
-          maximumFractionDigits: 0,
-        });
-
-      const faltantePct = row.goal
-        ? Math.min(100, Math.round((row.remaining / row.goal) * 100))
-        : 0;
-
-      return (
-        <div
-          key={row.comercial}
-          className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
-        >
-          <div className="p-4 flex flex-col gap-2">
-            {/* Encabezado */}
-            <div className="flex justify-between items-center">
-              <div className="font-semibold text-gray-900 text-base">
-                {i + 1}. {row.comercial}
-              </div>
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-base text-gray-700 font-semibold">
+              Comercial: <b>{selectedComercial}</b>
             </div>
-<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-  {/* Meta anual */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(row.goal)}
-    </div>
-  </div>
-
-  {/* Ofertas ganadas */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(row.wonCOP)}
-    </div>
-  </div>
-
-  {/* Faltante para cumplimiento */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(row.remaining)}
-    </div>
-  </div>
-
-  {/* Necesita cotizar */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(row.needQuote)}
-    </div>
-  </div>
-
-  {/* Ofertas abiertas */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
-    </div>
-  </div>
-
-  {/* Abiertas + perdidas */}
-  <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
-    <div className="text-base md:text-lg font-semibold text-gray-600">Total en ofertas</div>
-<div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-      {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
-    </div>
-  </div>
-</div>
-
-{/* Barra: abiertas vs lo que necesita cotizar */}
-{(() => {
-  const openAmt = openAmountsByComercial.get(nameKey(row.comercial)) || 0;
-  const pctOpen = row.needQuote > 0
-    ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
-    : 0;
-  return (
-    <div className="mt-3">
-<div className="flex justify-between text-xs text-gray-500 mb-1">
-  <span className="flex items-center gap-1">
-    {pctOpen}% 
-    <span className={`${coverageColor(row.needQuote > 0 ? (openAmt / row.needQuote) : 0)} text-lg leading-none`}>●</span>
-  </span>
-</div>
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className="h-2 bg-blue-600 rounded-full transition-all"
-          style={{ width: `${pctOpen}%` }}
-        />
-      </div>
-      <div className="mt-1 text-xs text-gray-500">
-        Abiertas: <b>{fmtCOP(openAmt)}</b> / Necesita: <b>{fmtCOP(row.needQuote)}</b>
-      </div>
-    </div>
-  );
-})()}
+            <div className="text-base text-gray-700 font-semibold">
+              Año (Sheet): <b>{settingsYear}</b>
+            </div>
+            <div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
+              Win Rate asumido:
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                className="w-20 border rounded-lg px-2 py-1 text-sm text-right"
+                value={assumedWinRate}
+                onChange={(e) => setAssumedWinRate(Number(e.target.value || 0))}
+                title="Porcentaje de conversión esperado de cotizaciones a ganadas"
+              />
+              <span>%</span>
+            </div>
           </div>
-        </div>
-      );
-    })}
-  </div>
-</section>
+
+          {(() => {
+            const isAll = selectedComercial === "ALL";
+            const sel = isAll
+              ? null
+              : (kpi.porComercial.find(r => r.comercial === selectedComercial) ||
+                { comercial: selectedComercial, wonCOP: 0, goal: metaAnualFor(selectedComercial, settingsYear), remaining: 0, needQuote: 0 });
+
+            // Montos abiertos
+            const openAmtSel = isAll
+              ? Array.from(openAmountsByComercial.values()).reduce((a, b) => a + b, 0)
+              : (openAmountsByComercial.get(nameKey(selectedComercial)) || 0);
+
+            const needSel = isAll ? kpi.total.needQuote : sel?.needQuote || 0;
+
+            const pctOpenSel = needSel > 0 ? Math.min(100, Math.round((openAmtSel / needSel) * 100)) : 0;
+            const colorClassSel = coverageColor(needSel > 0 ? openAmtSel / needSel : 0);
+
+            const remainingVal = isAll ? kpi.total.remaining : sel?.remaining || 0;
+
+            return (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Faltante */}
+                <div className="bg-white p-4 rounded-lg border text-center">
+                  <div className="text-sm text-gray-500 mb-1">
+                    {isAll ? "Faltante (compañía)" : "Faltante (comercial)"}
+                  </div>
+                  <div className="text-xl font-bold text-gray-800">
+                    {fmtCOP(remainingVal)}
+                  </div>
+                </div>
+
+                {/* Cotización necesaria */}
+                <div className="bg-white p-4 rounded-lg border text-center">
+                  <div className="text-sm text-gray-500 mb-1">
+                    {isAll ? "Cotización necesaria (compañía)" : "Cotización necesaria (comercial)"}
+                  </div>
+                  <div className="text-xl font-bold text-gray-800">
+                    {fmtCOP(needSel)}
+                  </div>
+                </div>
+
+                {/* Avance con semáforo (semáforo más grande) */}
+                <div className="bg-white p-4 rounded-lg border text-center">
+                  <div className="text-sm text-gray-500 mb-1">
+                    {isAll ? "Avance total (abiertas vs necesita)" : "Avance (abiertas vs necesita)"}
+                  </div>
+                  <div className="text-xl font-bold flex items-center justify-center gap-3 text-gray-800">
+                    <span>{pctOpenSel}%</span>
+                    <span
+                      className={`
+                        inline-block rounded-full ${colorClassSel}
+                        w-6 h-6 md:w-7 md:h-7
+                        ring-2 ring-white ring-offset-1 ring-offset-gray-200 shadow-md
+                      `}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="text-xs text-gray-500 mt-3">
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
+          </div>
+        </section>
+
+        {/* Ranking visual */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="mb-3 font-semibold text-gray-800">
+            Ranking por comercial (Forecast necesario para cumplir meta)
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
+              const pctBar = Math.min(
+                Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100),
+                100
+              );
+
+              const fmtCOP = (n: number) =>
+                (Number(n) || 0).toLocaleString("es-CO", {
+                  style: "currency",
+                  currency: "COP",
+                  maximumFractionDigits: 0,
+                });
+
+              const faltantePct = row.goal
+                ? Math.min(100, Math.round((row.remaining / row.goal) * 100))
+                : 0;
+
+              return (
+                <div
+                  key={row.comercial}
+                  className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                >
+                  <div className="p-4 flex flex-col gap-2">
+                    {/* Encabezado */}
+                    <div className="flex justify-between items-center">
+                      <div className="font-semibold text-gray-900 text-base">
+                        {i + 1}. {row.comercial}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
+                      {/* Meta anual */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(row.goal)}
+                        </div>
+                      </div>
+
+                      {/* Ofertas ganadas */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(row.wonCOP)}
+                        </div>
+                      </div>
+
+                      {/* Faltante para cumplimiento */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(row.remaining)}
+                        </div>
+                      </div>
+
+                      {/* Necesita cotizar */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(row.needQuote)}
+                        </div>
+                      </div>
+
+                      {/* Ofertas abiertas */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
+                        </div>
+                      </div>
+
+                      {/* Abiertas + perdidas */}
+                      <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
+                        <div className="text-base md:text-lg font-semibold text-gray-600">Total en ofertas</div>
+                        <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
+                          {fmtCOP(openPlusLostAmountsByComercial.get(nameKey(row.comercial)) || 0)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Barra: abiertas vs lo que necesita cotizar (más ancha + semáforo grande) */}
+                    {(() => {
+                      const openAmt = openAmountsByComercial.get(nameKey(row.comercial)) || 0;
+                      const pctOpen = row.needQuote > 0
+                        ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
+                        : 0;
+
+                      return (
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                            <span className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-700">{pctOpen}%</span>
+                              <span
+                                className={`
+                                  inline-block rounded-full ${coverageColor(row.needQuote > 0 ? (openAmt / row.needQuote) : 0)}
+                                  w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200 shadow
+                                `}
+                              />
+                            </span>
+                            <span>
+                              Abiertas: <b>{fmtCOP(openAmt)}</b> / Necesita: <b>{fmtCOP(row.needQuote)}</b>
+                            </span>
+                          </div>
+
+                          <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                            <div
+                              className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                              style={{ width: `${pctOpen}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </main>
     </div>
   );
 };
+
 
   const ScreenWinRate = () => {
 const [mode, setMode] = React.useState<"cantidad" | "presupuesto">("cantidad");
