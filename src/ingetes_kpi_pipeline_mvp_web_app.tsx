@@ -1090,7 +1090,48 @@ function calcForecastNeededFromPivot(
 
   return { porComercial, total: agg };
 }
+function calcForecastNeededFromPivotByOwner(
+  model: any,
+  goalFor: (comercial: string) => number,
+  winRateForPct: (comercial: string) => number // % (0..100)
+) {
+  type RowF = { comercial: string; wonCOP: number; goal: number; remaining: number; needQuote: number; wrPct: number };
 
+  const porComercial: RowF[] = model.rows.map((r: any) => {
+    // Sumar solo etapas ganadas
+    let wonCOP = 0;
+    for (const [stage, agg] of Object.entries(r.values)) {
+      const s = String(stage).toLowerCase();
+      if (s.includes("closed won") || s.includes("ganad")) {
+        wonCOP += Number((agg as any)?.sum || 0);
+      }
+    }
+    const goal = Math.max(0, goalFor(r.comercial) || 0);
+    const remaining = Math.max(0, goal - wonCOP);
+
+    const wrPct = Math.max(0, Math.min(100, Number(winRateForPct(r.comercial) || 0)));
+    const wr = wrPct / 100;
+
+    const needQuote = wr > 0 ? Math.ceil(remaining / wr) : 0;
+
+    return { comercial: r.comercial, wonCOP, goal, remaining, needQuote, wrPct };
+  });
+
+  const agg = porComercial.reduce(
+    (a, x) => ({
+      wonCOP: a.wonCOP + x.wonCOP,
+      goal: a.goal + x.goal,
+      remaining: a.remaining + x.remaining,
+      needQuote: a.needQuote + x.needQuote,
+    }),
+    { wonCOP: 0, goal: 0, remaining: 0, needQuote: 0 }
+  );
+
+  // Ordena por mayor necesidad
+  porComercial.sort((a, b) => b.needQuote - a.needQuote);
+
+  return { porComercial, total: agg };
+}
 function findHeaderPosition(A:any[][]) {
   let headerRow = 0, propietarioCol = 0, best = -1;
   for (let r=0; r<Math.min(40, A.length); r++) {
@@ -1458,7 +1499,8 @@ type MetaSheetRow = {
   metaAnual: number;
   metaOfertas: number;
   metaVisitas: number;
-  metaLlamadas: number;   // ← NEW
+  metaLlamadas: number;
+  metaWinRate: number;   // ← NUEVO (%)
 };
 
 const [metasByYear, setMetasByYear] = useState<Record<number, MetaSheetRow[]>>({});
@@ -1471,13 +1513,14 @@ async function ensureMetasForYear(year: number) {
   const url = `${METAS_GET_URL}${METAS_GET_URL.includes("?") ? "&" : "?"}year=${year}`;
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
-  const metas: MetaSheetRow[] = (data?.metas || []).map((m: any) => ({
-    comercial: normalizeName(m.comercial),
-    metaAnual: Number(m.metaAnual || 0),
-    metaOfertas: Number(m.metaOfertas || 0),
-    metaVisitas: Number(m.metaVisitas || 0),
-    metaLlamadas: Number(m.metaLlamadas || 0), // ← NEW
-  }));
+const metas: MetaSheetRow[] = (data?.metas || []).map((m: any) => ({
+  comercial: normalizeName(m.comercial),
+  metaAnual: Number(m.metaAnual || 0),
+  metaOfertas: Number(m.metaOfertas || 0),
+  metaVisitas: Number(m.metaVisitas || 0),
+  metaLlamadas: Number(m.metaLlamadas || 0),
+  metaWinRate: Number(m.metaWinRate || 0),   // ← NUEVO
+}));
   setMetasByYear(prev => ({ ...prev, [year]: metas }));
 }
 
@@ -1486,7 +1529,12 @@ function metaLlamadasFor(comercial: string, year: number) {
   const rec = arr.find(m => m.comercial === normalizeName(comercial));
   return rec?.metaLlamadas ?? 0;
 }
-
+function metaWinRateFor(comercial: string, year: number) {
+  const arr = metasByYear[year] || [];
+  const rec = arr.find(m => normalizeName(m.comercial) === normalizeName(comercial));
+  const v = Number(rec?.metaWinRate ?? 0);
+  return v > 0 ? v : 20; // default 20% si no hay dato
+}
 function metaOfertasFor(comercial: string, year: number) {
   const arr = metasByYear[year] || [];
   const rec = arr.find(m => m.comercial === normalizeName(comercial));
@@ -1821,9 +1869,6 @@ const ScreenPipeline = () => {
     );
   }
 
-  // Win rate asumido (0..1)
-  const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100;
-
   // Meta anual desde el Sheet del año en Ajustes
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
 
@@ -1831,10 +1876,15 @@ const ScreenPipeline = () => {
   React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
 
   // KPI principal: won, remaining, needQuote
-  const kpi = React.useMemo(
-    () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
-    [pivot, goalFor, WIN_RATE]
-  );
+const kpi = React.useMemo(
+  () =>
+    calcForecastNeededFromPivotByOwner(
+      pivot,
+      goalFor,
+      (com) => metaWinRateFor(com, settingsYear) // ← usa el % del Ajuste
+    ),
+  [pivot, goalFor, settingsYear, metasByYear]
+);
 
   // Seleccionado
   const selected = React.useMemo(() => {
@@ -1875,21 +1925,6 @@ const ScreenPipeline = () => {
             </div>
             <div className="text-base text-gray-700 font-semibold">
               Año (Sheet): <b>{settingsYear}</b>
-            </div>
-
-            <div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
-              Win Rate asumido:
-              <input
-                type="number"
-                min={1}
-                max={100}
-                step={1}
-                className="w-20 border rounded-lg px-2 py-1 text-sm text-right"
-                value={assumedWinRate}
-                onChange={(e) => setAssumedWinRate(Number(e.target.value || 0))}
-                title="Porcentaje de conversión esperado de cotizaciones a ganadas"
-              />
-              <span>%</span>
             </div>
           </div>
 
@@ -1950,7 +1985,7 @@ const ScreenPipeline = () => {
           })()}
 
           <div className="text-xs text-gray-500 mt-3">
-            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>{Math.round(WIN_RATE * 100)}%</em>.
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>Win Rate del comercial (Ajustes)</em>.
           </div>
         </section>
 
@@ -1982,15 +2017,21 @@ const ScreenPipeline = () => {
                 >
                   <div className="p-4 flex flex-col gap-2">
                     {/* Encabezado: nombre + % + semáforo */}
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-gray-900 text-base">
-                        {i + 1}. {row.comercial}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <span className="tabular-nums">{pctOpen}%</span>
-                        <span className={`inline-block rounded-full ${dotClass} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
-                      </div>
-                    </div>
+            <div className="flex items-center justify-between">
+  <div className="flex items-center gap-2">
+    <div className="font-semibold text-gray-900 text-base">
+      {i + 1}. {row.comercial}
+    </div>
+    {/* Chip WR por comercial */}
+    <span className="px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-800">
+      WR {metaWinRateFor(row.comercial, settingsYear)}%
+    </span>
+  </div>
+  <div className="flex items-center gap-2 text-sm text-gray-700">
+    <span className="tabular-nums">{pctOpen}%</span>
+    <span className={`inline-block rounded-full ${dotClass} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+  </div>
+</div>
 
                     {/* Tarjetas pequeñas */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
