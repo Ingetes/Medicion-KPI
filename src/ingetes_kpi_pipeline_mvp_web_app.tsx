@@ -516,7 +516,8 @@ function buildVisitsModelFromWorkbook(wb: XLSX.WorkBook) {
 }
 
 // ================== ACTIVIDADES (archivo independiente) ==================
-// Clasifica estado textual en una de tres categorías esperadas
+
+// (opcional) aún lo dejamos por si no hay fechas y trae "Estado"
 function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pendientes" | "otros" {
   const s = norm(raw || "");
   if (/(^|[^a-z])comp(?:let|leta|leto|leted|done)/i.test(s)) return "completadas";
@@ -525,18 +526,18 @@ function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pen
   return "otros";
 }
 
-// Lee una hoja de ACTIVIDADES (sin suposiciones de columnas exactas)
-// Necesitamos: Comercial/Propietario y Estado/Status (lo demás es opcional)
+// Prioriza FECHAS: fin/vencimiento para saber vencidas; si no hay fechas válidas, cae a Estado/Status.
 function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("ACTIVIDADES: hoja vacía");
 
-  // Detectar fila de encabezados
+  // Detectar fila de encabezados (buscamos owner + alguna fecha o status)
   const scoreHead = (row: any[]) => {
     const H = row.map(norm);
     let sc = 0;
     if (H.some(h => h.includes("comercial") || h.includes("propietario") || h.includes("owner") || h.includes("vendedor") || h.includes("ejecutivo"))) sc++;
     if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
+    if (H.some(h => h.includes("fecha") || h.includes("inicio") || h.includes("fin") || h.includes("vencim") || h.includes("deadline") || h.includes("start") || h.includes("end") || h.includes("due"))) sc++;
     return sc;
   };
   let headerRow = 0, best = -1;
@@ -555,11 +556,22 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     return -1;
   };
 
-  const idxOwner  = findIdx("comercial", "propietario", "owner", "vendedor", "ejecutivo");
-  const idxStatus = findIdx("estado", "status");
+  // Columnas clave
+  const idxOwner   = findIdx("comercial", "propietario", "owner", "vendedor", "ejecutivo");
+  const idxStatus  = findIdx("estado", "status"); // opcional, solo si no hay fechas
 
-  if (idxOwner  < 0) throw new Error(`ACTIVIDADES: falta columna Comercial/Propietario en hoja ${sheetName}`);
-  if (idxStatus < 0) throw new Error(`ACTIVIDADES: falta columna Estado/Status en hoja ${sheetName}`);
+  // FECHAS (todas opcionales)
+  const idxCre     = findIdx("fecha de creacion", "fecha creación", "fecha creacion", "created", "creation");
+  const idxInicio  = findIdx("inicio", "fecha inicio", "start", "start date", "fecha de inicio");
+  const idxFin     = findIdx("fin", "fecha fin", "end", "end date", "fecha de fin", "vencim", "vencimiento", "deadline", "due date");
+
+  if (idxOwner < 0) throw new Error(`ACTIVIDADES: falta columna Comercial/Propietario en hoja ${sheetName}`);
+
+  const todayUTC = new Date(Date.UTC(
+    new Date().getUTCFullYear(),
+    new Date().getUTCMonth(),
+    new Date().getUTCDate()
+  ));
 
   const rows: Array<{ comercial: string; status: "completadas"|"vencidas"|"pendientes"|"otros"; raw: any[] }> = [];
   let currentComercial = "";
@@ -568,7 +580,7 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const row = A[r] || [];
     if (row.every(v => String(v).trim() === "")) continue;
 
-    // evitar subtotales / totales / encabezados repetidos
+    // evita totales/subtotales o nuevas cabeceras
     const line = norm((row.join(" ")) || "");
     if (line.startsWith("subtotal") || line.startsWith("total") || line.includes("recuento")) continue;
     if (scoreHead(row) >= 2) continue;
@@ -584,26 +596,48 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     const comercial = currentComercial;
     if (!comercial) continue;
 
-    const statusText = String(row[idxStatus] ?? "");
-    const status = classifyActivityStatus(statusText);
+    // Leer fechas (opcionales)
+    const fCre   = idxCre    >= 0 ? parseDateCell(row[idxCre])    : null;
+    const fIni   = idxInicio >= 0 ? parseDateCell(row[idxInicio]) : null;
+    const fFin   = idxFin    >= 0 ? parseDateCell(row[idxFin])    : null;
+
+    // Regla de negocio:
+    // - "completadas": cuando hay fecha de FIN (entregada/realizada/cerrada)
+    // - "vencidas":    hoy > fin y NO está completada (sin fecha fin)
+    // - "pendientes":  el resto (incluye futuras por inicio > hoy)
+    let status: "completadas" | "vencidas" | "pendientes" | "otros" = "pendientes";
+
+    if (fFin) {
+      status = "completadas";
+    } else if (fFin === null && idxFin >= 0) {
+      // si existe la columna de fin/vencimiento pero la celda está vacía:
+      // si teníamos fecha de fin esperada y ya pasó, vencida. Si no hay fin definida, queda pendiente.
+      // (no tenemos "fecha de fin esperada" por fila; así que solo marcamos vencida si la columna existe
+      //  y su valor parseado fue inválido pero había texto de fecha → caso muy raro. En la práctica,
+      //  dejamos "pendientes".)
+      status = "pendientes";
+    }
+
+    // Si NO hay fecha fin válida, pero sí hay una "fecha de fin/vencimiento" en texto y es menor a hoy → vencida
+    if (!fFin && idxFin >= 0) {
+      const rawFin = String(row[idxFin] ?? "").trim();
+      if (rawFin) {
+        const parsedFin = parseDateCell(rawFin);
+        if (parsedFin && parsedFin.getTime() < todayUTC.getTime()) status = "vencidas";
+      }
+    }
+
+    // Si NO hay fecha fin ni vencimiento claro y tenemos Estado/Status, úsalo como fallback
+    if (!fFin && status === "pendientes" && idxStatus >= 0) {
+      const st = classifyActivityStatus(String(row[idxStatus] ?? ""));
+      if (st !== "otros") status = st;
+    }
 
     rows.push({ comercial, status, raw: row });
   }
 
   if (!rows.length) throw new Error(`ACTIVIDADES: sin filas válidas en ${sheetName}`);
   return { rows, sheetName };
-}
-
-function buildActivitiesModelFromWorkbook(wb: XLSX.WorkBook) {
-  const errs: string[] = [];
-  for (const sn of wb.SheetNames) {
-    try {
-      const ws = wb.Sheets[sn];
-      if (!ws) continue;
-      return parseActivitiesFromSheet(ws, sn);
-    } catch(e:any) { errs.push(`${sn}: ${e?.message || e}`); }
-  }
-  throw new Error("ACTIVIDADES: no pude interpretar ninguna hoja. " + errs.join(" | "));
 }
 
 // ================== DETALLADO → OFERTAS ==================
@@ -2357,9 +2391,9 @@ const ScreenActivities = () => {
             <StatCard label="Meta">{/* sin meta por ahora */}—</StatCard>
           </div>
 
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo <b>ACTIVIDADES</b>. Se clasifica por la columna <em>Estado/Status</em>.
-          </div>
+<div className="text-xs text-gray-500 mt-2">
+  Fuente: archivo <b>ACTIVIDADES</b>. Se clasifica por <em>fechas</em> (fin/vencimiento). Si no hay fechas, se usa <em>Estado/Status</em>.
+</div>
         </section>
 
         {/* Ranking */}
