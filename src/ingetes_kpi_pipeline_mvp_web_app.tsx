@@ -2410,7 +2410,25 @@ const ScreenActivities = () => {
             </div>
           </div>
 
-          {/* Botonera de estado (igual estilo que Sales Cycle) */}
+          {/* Tarjetas superiores */}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label={`${label} (${scope === "total" ? "total" : period || "mes"})`}>
+              {data.total} / {totalFileCount}
+            </StatCard>
+            <StatCard label="Del comercial seleccionado">
+              {selectedCount}
+            </StatCard>
+            <StatCard label="Meta">—</StatCard>
+          </div>
+        </section>
+
+        {/* Ranking */}
+        {activitiesModel && (
+          <section className="p-4 bg-white rounded-xl border">
+            <div className="mb-3 font-semibold">
+              Ranking por comercial ({label.toLowerCase()}) · {scope === "total" ? "Total" : (period || "—")}
+            </div>
+                     {/* Botonera de estado (igual estilo que Sales Cycle) */}
           <div className="mt-3">
             <div className="inline-flex rounded-lg border overflow-hidden">
               <button
@@ -2433,31 +2451,6 @@ const ScreenActivities = () => {
               </button>
             </div>
           </div>
-
-          {/* Tarjetas superiores */}
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${label} (${scope === "total" ? "total" : period || "mes"})`}>
-              {data.total} / {totalFileCount}
-            </StatCard>
-            <StatCard label="Del comercial seleccionado">
-              {selectedCount}
-            </StatCard>
-            <StatCard label="Meta">—</StatCard>
-          </div>
-
-          <div className="text-xs text-gray-500 mt-2">
-            Fuente: archivo <b>ACTIVIDADES</b>.  
-            Clasificación: <em>Estado (M)</em> y <em>Fecha (D)</em> para vencidas/pendientes.  
-            Filtro mensual: <em>Fecha de creación (G)</em>.
-          </div>
-        </section>
-
-        {/* Ranking */}
-        {activitiesModel && (
-          <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">
-              Ranking por comercial ({label.toLowerCase()}) · {scope === "total" ? "Total" : (period || "—")}
-            </div>
             <div className="space-y-2">
               {onlySelected(
                 data.porComercial.map((row: any, i: number) => {
