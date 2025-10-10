@@ -530,16 +530,14 @@ function classifyActivityStatus(raw?: string): "completadas" | "vencidas" | "pen
 // Reemplaza TODA la función parseActivitiesFromSheet por esta
 
 function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
-  // Leemos como matriz, sin asumir tipos
   const A: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
   if (!A.length) throw new Error("ACTIVIDADES: hoja vacía");
 
-  // Buscamos una fila probable de encabezados, pero IGUAL forzaremos B/D/M
+  // Detectar encabezado (solo heurística para saltar títulos iniciales)
   const normH = (s: any) => norm(String(s));
   let headerRow = 0, best = -1;
   for (let r = 0; r < Math.min(40, A.length); r++) {
     const H = (A[r] || []).map(normH);
-    // heurística simple: que aparezca algo tipo “creado”, “estado”, “fecha”
     let sc = 0;
     if (H.some(h => h.includes("creado") || h.includes("owner") || h.includes("comercial"))) sc++;
     if (H.some(h => h.includes("estado") || h.includes("status"))) sc++;
@@ -547,66 +545,82 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     if (sc > best) { best = sc; headerRow = r; }
   }
 
-  // Forzamos posiciones físicas (A=0, B=1, C=2, D=3, …, M=12)
-  const idxOwner  = 1;  // B: Creado por
-  const idxFecha  = 3;  // D: Fecha
-  const idxEstado = 12; // M: Estado
+  // Índices fijos por columnas físicas (A=0): B=1, D=3, G=6, M=12
+  const idxOwner   = 1;  // B: Creado por (comercial)
+  const idxFecha   = 3;  // D: Fecha (para calcular vencidas/pendientes si está OPEN)
+  const idxCreated = 6;  // G: Fecha de creación  ← para filtrar por mes
+  const idxEstado  = 12; // M: Estado (completed/open/…)
 
+  // Día de hoy (UTC, sin hora)
   const todayUTC = new Date(Date.UTC(
     new Date().getUTCFullYear(),
     new Date().getUTCMonth(),
     new Date().getUTCDate()
   ));
 
-  const rows: Array<{ comercial: string; status: "completadas"|"vencidas"|"pendientes"|"otros"; raw: any[] }> = [];
+  type RowAct = {
+    comercial: string;
+    status: "completadas" | "vencidas" | "pendientes" | "otros";
+    fecha?: Date | null;        // D
+    created?: Date | null;      // G
+    createdYM?: string;         // YYYY-MM (desde G)
+    raw: any[];
+  };
+
+  const rows: RowAct[] = [];
   let currentComercial = "";
 
   for (let r = headerRow + 1; r < A.length; r++) {
     const row = A[r] || [];
-    // fila vacía → continuar
     if (row.every(v => String(v).trim() === "")) continue;
 
-    // arrastre del comercial (columna B)
+    // arrastre de comercial (B)
     const rawOwner = row[idxOwner];
     if (rawOwner != null && String(rawOwner).trim() !== "") {
       currentComercial = mapComercial(rawOwner);
-      // si la fila es solo el título del comercial, saltamos
+      // si es “título” del bloque (solo B con texto), saltar
       const onlyOwner = row.filter((v:any, c:number)=> c!==idxOwner && String(v??"").trim()!=="").length===0;
       if (onlyOwner) continue;
     }
     const comercial = currentComercial;
-    if (!comercial) continue;
-    if (comercial === "(Sin comercial)") continue; // ← NO contamos filas sin comercial
+    if (!comercial || comercial === "(Sin comercial)") continue;
 
-    // estado (columna M)
+    // Columnas de fecha
+    const fecha   = parseDateCell(row[idxFecha]);    // D (vencida/pendiente si OPEN)
+    const created = parseDateCell(row[idxCreated]);  // G (filtrado mensual)
+    let createdYM = "";
+    if (created) {
+      const d = created;
+      createdYM = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+    }
+
+    // Estado (M)
     const estadoRaw = String(row[idxEstado] ?? "");
-    const est = norm(estadoRaw);
-
-    // fecha (columna D) → puede venir serial, texto o Date
-    const fecha = parseDateCell(row[idxFecha]); // ya devuelve UTC sin hora o null
-
     let status: "completadas" | "vencidas" | "pendientes" | "otros" = "pendientes";
 
-    // Regla pedida:
-    // - estado "completed"  => completadas
-    // - estado "open"       => mirar D: si hoy > D ⇒ vencidas; si hoy <= D ⇒ pendientes (0 días también pendientes)
-    // - cualquier otro      => intentamos la misma lógica de fecha; si no hay fecha, queda "pendientes"
     if (/completed/i.test(estadoRaw)) {
       status = "completadas";
     } else if (/open/i.test(estadoRaw)) {
+      // OPEN → usar D para saber si vencida/pendiente (0 días cuenta como pendiente)
       if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
       else status = "pendientes";
     } else {
-      // fallback si llega otro valor en M
+      // Otro valor → misma regla por fecha D
       if (fecha && todayUTC.getTime() > fecha.getTime()) status = "vencidas";
       else status = "pendientes";
     }
 
-    rows.push({ comercial, status, raw: row });
+    rows.push({ comercial, status, fecha, created, createdYM, raw: row });
   }
 
   if (!rows.length) throw new Error(`ACTIVIDADES: sin filas válidas en ${sheetName}`);
-  return { rows, sheetName };
+
+  // Periodos mensuales disponibles con base en G (fecha de creación).
+  const periods = Array.from(new Set(rows.map(r => r.createdYM || "")))
+    .filter(Boolean)
+    .sort((a,b)=>a.localeCompare(b));
+
+  return { rows, sheetName, periods };
 }
 
 function buildActivitiesModelFromWorkbook(wb: XLSX.WorkBook) {
@@ -2294,38 +2308,49 @@ const selected = useMemo(() => {
   );
 };
 
-// === ScreenVisits (solo visitas + meeting) ===
+// === ScreenActivities (Total / Mensual con filtro por G = fecha de creación) ===
 const ScreenActivities = () => {
   const [mode, setMode] = React.useState<"completadas" | "vencidas" | "pendientes">("completadas");
+  const [scope, setScope] = React.useState<"total" | "mensual">("total");
+  const [period, setPeriod] = React.useState<string>("");
 
-// Totales por comercial (todas las actividades) para el denominador del %
-const totalsByCom = React.useMemo(() => {
-  const m = new Map<string, number>();
-  const rows = activitiesModel?.rows || [];
-  for (const r of rows) {
-    if (!r?.comercial || r.comercial === "(Sin comercial)") continue; // coherente con el parser
-    m.set(r.comercial, (m.get(r.comercial) || 0) + 1);
-  }
-  return m;
-}, [activitiesModel]);
-  
+  // Periodos disponibles (YYYY-MM) desde fecha de creación (columna G)
+  const periods = React.useMemo(() => {
+    return activitiesModel?.periods || [];
+  }, [activitiesModel]);
+
+  // Filas según alcance (total o mensual por G)
+  const scopedRows = React.useMemo(() => {
+    const all = activitiesModel?.rows || [];
+    if (scope === "mensual" && period) {
+      return all.filter((r: any) => r.createdYM === period);
+    }
+    return all;
+  }, [activitiesModel, scope, period]);
+
+  // Denominador para el %: total de actividades del comercial en el ÁMBITO seleccionado
+  const totalsByCom = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of scopedRows) {
+      if (!r?.comercial || r.comercial === "(Sin comercial)") continue;
+      m.set(r.comercial, (m.get(r.comercial) || 0) + 1);
+    }
+    return m;
+  }, [scopedRows]);
+
+  // Datos por estado seleccionado
   const data = React.useMemo(() => {
-    if (!activitiesModel) return { total: 0, porComercial: [] as any[] };
-    const rows = activitiesModel.rows || [];
-
     const by = new Map<string, number>();
-    for (const r of rows) {
-      if (r.status !== mode) continue;                 // filtra por estado elegido
+    for (const r of scopedRows) {
+      if (r.status !== mode) continue;
       by.set(r.comercial, (by.get(r.comercial) || 0) + 1);
     }
-
     const porComercial = Array.from(by.entries())
       .map(([comercial, count]) => ({ comercial, count }))
       .sort((a, b) => b.count - a.count);
-
     const total = porComercial.reduce((a, x) => a + x.count, 0);
     return { total, porComercial };
-  }, [activitiesModel, mode]);
+  }, [scopedRows, mode]);
 
   const selectedCount = React.useMemo(() => {
     if (selectedComercial === "ALL") return data.total;
@@ -2337,8 +2362,7 @@ const totalsByCom = React.useMemo(() => {
     : mode === "vencidas" ? "Vencidas"
     : "Pendientes";
 
-  // Totales del archivo para el denominador (completadas/total, etc.)
-  const totalFileCount = React.useMemo(() => Number(activitiesModel?.rows?.length || 0), [activitiesModel]);
+  const totalFileCount = scopedRows.length; // total en el ámbito (total o ese mes)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2349,71 +2373,112 @@ const totalsByCom = React.useMemo(() => {
             <div className="text-sm text-gray-500">
               Comercial: <b>{selectedComercial}</b>
             </div>
+
+            {/* Selector de ámbito: Total / Mensual */}
+            <div className="md:ml-auto flex items-center gap-2">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${scope === "total" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setScope("total")}
+                >
+                  Total
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${scope === "mensual" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => {
+                    setScope("mensual");
+                    // si no hay período seleccionado, intenta poner el último disponible
+                    if (!period && periods.length) setPeriod(periods[periods.length - 1]);
+                  }}
+                >
+                  Mensual
+                </button>
+              </div>
+
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm disabled:opacity-50"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                disabled={scope === "total"}
+                title="Mes (YYYY-MM) basado en Fecha de creación (columna G)"
+              >
+                <option value="">—</option>
+                {periods.map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Botonera de estado (igual estilo que Sales Cycle) */}
+          <div className="mt-3">
+            <div className="inline-flex rounded-lg border overflow-hidden">
+              <button
+                className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                onClick={() => setMode("completadas")}
+              >
+                Completadas
+              </button>
+              <button
+                className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                onClick={() => setMode("vencidas")}
+              >
+                Vencidas
+              </button>
+              <button
+                className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
+                onClick={() => setMode("pendientes")}
+              >
+                Pendientes
+              </button>
+            </div>
           </div>
 
           {/* Tarjetas superiores */}
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${label} (compañía)`}>
+            <StatCard label={`${label} (${scope === "total" ? "total" : period || "mes"})`}>
               {data.total} / {totalFileCount}
             </StatCard>
             <StatCard label="Del comercial seleccionado">
               {selectedCount}
             </StatCard>
-            <StatCard label="Meta">{/* sin meta por ahora */}—</StatCard>
+            <StatCard label="Meta">—</StatCard>
           </div>
 
-<div className="text-xs text-gray-500 mt-2">
-  Fuente: archivo <b>ACTIVIDADES</b>. Se clasifica por <em>fechas</em> (fin/vencimiento). Si no hay fechas, se usa <em>Estado/Status</em>.
-</div>
+          <div className="text-xs text-gray-500 mt-2">
+            Fuente: archivo <b>ACTIVIDADES</b>.  
+            Clasificación: <em>Estado (M)</em> y <em>Fecha (D)</em> para vencidas/pendientes.  
+            Filtro mensual: <em>Fecha de creación (G)</em>.
+          </div>
         </section>
 
         {/* Ranking */}
         {activitiesModel && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">
-              Ranking por comercial ({label.toLowerCase()})
+              Ranking por comercial ({label.toLowerCase()}) · {scope === "total" ? "Total" : (period || "—")}
             </div>
             <div className="space-y-2">
-          {/* Botonera tipo 'Ciclo de venta' */}
-            <div className="md:ml-auto">
-              <div className="inline-flex rounded-lg border overflow-hidden">
-                <button
-                  className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("completadas")}
-                >
-                  Completadas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("vencidas")}
-                >
-                  Vencidas
-                </button>
-                <button
-                  className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
-                  onClick={() => setMode("pendientes")}
-                >
-                  Pendientes
-                </button>
-              </div>
-            </div>
-{onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-  const denom = totalsByCom.get(row.comercial) || 0; // total del comercial
-  const pct = denom > 0 ? Math.round((row.count / denom) * 100) : 0; // % del comercial
-  return (
-    <div key={row.comercial} className="text-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div className="font-medium">{i + 1}. {row.comercial}</div>
-        <div className="tabular-nums text-gray-900">
-          {row.count} ({pct}%)
-        </div>
-      </div>
-      <div className="h-2 bg-gray-200 rounded mt-1">
-        <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, pct) + "%" }} />
-      </div>
-    </div>
-  );
-})}
+              {onlySelected(
+                data.porComercial.map((row: any, i: number) => {
+                  const denom = totalsByCom.get(row.comercial) || 0; // total del comercial en el ámbito
+                  const pct = denom > 0 ? Math.round((row.count / denom) * 100) : 0;
+                  return { ...row, rank: i + 1, pct };
+                }),
+                selectedComercial
+              ).map((row: any) => (
+                <div key={row.comercial} className="text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{row.rank}. {row.comercial}</div>
+                    <div className="tabular-nums text-gray-900">
+                      {row.count} ({row.pct}%)
+                    </div>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded mt-1">
+                    <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, row.pct) + "%" }} />
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
