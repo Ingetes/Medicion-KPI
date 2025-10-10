@@ -1821,20 +1821,22 @@ const ScreenPipeline = () => {
     );
   }
 
-  // Tomamos metas del año que usas en Ajustes (settingsYear)
-  const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100; // 0..1
+  // Win rate asumido (0..1)
+  const WIN_RATE = Math.max(0, Math.min(100, assumedWinRate)) / 100;
+
+  // Meta anual desde el Sheet del año en Ajustes
   const goalFor = (com: string) => metaAnualFor(com, settingsYear);
 
-  // Asegura que tenemos las metas de ese año
+  // Asegura metas del año
   React.useEffect(() => { ensureMetasForYear(settingsYear); }, [settingsYear]);
 
-  // Calcula: won (cerrado), remaining (faltante) y needQuote (faltante/0.2)
+  // KPI principal: won, remaining, needQuote
   const kpi = React.useMemo(
     () => calcForecastNeededFromPivot(pivot, goalFor, WIN_RATE),
     [pivot, goalFor, WIN_RATE]
   );
 
-  // Comodines seleccionados
+  // Seleccionado
   const selected = React.useMemo(() => {
     if (selectedComercial === "ALL") return null;
     return (
@@ -1843,14 +1845,23 @@ const ScreenPipeline = () => {
     );
   }, [kpi, selectedComercial]);
 
+  // Formateo COP
   const fmtCOP = (n: number) =>
     (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 
-  // Para barras
+  // Tope visual para barras
   const maxBar = React.useMemo(() => {
     const arr = onlySelected(kpi.porComercial, selectedComercial);
     return Math.max(kpi.total.needQuote || 0, ...(arr.map(r => r.needQuote || 0)), 1);
   }, [kpi, selectedComercial]);
+
+  // ── Helpers locales para colores (evita conflictos con funciones globales) ──
+  const coverageBg = (ratio: number) => {
+    if (!isFinite(ratio) || ratio <= 0) return "bg-red-500";
+    if (ratio >= 1) return "bg-green-600";
+    if (ratio >= 0.8) return "bg-yellow-500";
+    return "bg-red-500";
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1865,6 +1876,7 @@ const ScreenPipeline = () => {
             <div className="text-base text-gray-700 font-semibold">
               Año (Sheet): <b>{settingsYear}</b>
             </div>
+
             <div className="text-base text-gray-700 font-semibold md:ml-auto flex items-center gap-2">
               Win Rate asumido:
               <input
@@ -1886,17 +1898,16 @@ const ScreenPipeline = () => {
             const sel = isAll
               ? null
               : (kpi.porComercial.find(r => r.comercial === selectedComercial) ||
-                { comercial: selectedComercial, wonCOP: 0, goal: metaAnualFor(selectedComercial, settingsYear), remaining: 0, needQuote: 0 });
+                 { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), remaining: 0, needQuote: 0 });
 
-            // Montos abiertos
+            // Montos abiertos (detallado, solo etapas no cerradas)
             const openAmtSel = isAll
               ? Array.from(openAmountsByComercial.values()).reduce((a, b) => a + b, 0)
               : (openAmountsByComercial.get(nameKey(selectedComercial)) || 0);
 
             const needSel = isAll ? kpi.total.needQuote : sel?.needQuote || 0;
-
             const pctOpenSel = needSel > 0 ? Math.min(100, Math.round((openAmtSel / needSel) * 100)) : 0;
-            const colorClassSel = coverageColor(needSel > 0 ? openAmtSel / needSel : 0);
+            const dotClassSel = coverageBg(needSel > 0 ? openAmtSel / needSel : 0);
 
             const remainingVal = isAll ? kpi.total.remaining : sel?.remaining || 0;
 
@@ -1922,7 +1933,7 @@ const ScreenPipeline = () => {
                   </div>
                 </div>
 
-                {/* Avance con semáforo (semáforo más grande) */}
+                {/* Avance con semáforo (más visible) */}
                 <div className="bg-white p-4 rounded-lg border text-center">
                   <div className="text-sm text-gray-500 mb-1">
                     {isAll ? "Avance total (abiertas vs necesita)" : "Avance (abiertas vs necesita)"}
@@ -1930,11 +1941,7 @@ const ScreenPipeline = () => {
                   <div className="text-xl font-bold flex items-center justify-center gap-3 text-gray-800">
                     <span>{pctOpenSel}%</span>
                     <span
-                      className={`
-                        inline-block rounded-full ${colorClassSel}
-                        w-6 h-6 md:w-7 md:h-7
-                        ring-2 ring-white ring-offset-1 ring-offset-gray-200 shadow-md
-                      `}
+                      className={`inline-block rounded-full ${dotClassSel} w-6 h-6 md:w-7 md:h-7 ring-2 ring-white ring-offset-1 ring-offset-gray-200 shadow-md`}
                     />
                   </div>
                 </div>
@@ -1943,11 +1950,11 @@ const ScreenPipeline = () => {
           })()}
 
           <div className="text-xs text-gray-500 mt-3">
-            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>0,20</em>.
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>{Math.round(WIN_RATE * 100)}%</em>.
           </div>
         </section>
 
-        {/* Ranking visual */}
+        {/* Ranking por comercial */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="mb-3 font-semibold text-gray-800">
             Ranking por comercial (Forecast necesario para cumplir meta)
@@ -1955,21 +1962,18 @@ const ScreenPipeline = () => {
 
           <div className="grid grid-cols-1 gap-3">
             {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
+              // % de cobertura del comercial (abiertas / necesita)
+              const openAmt = openAmountsByComercial.get(nameKey(row.comercial)) || 0;
+              const pctOpen = row.needQuote > 0
+                ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
+                : 0;
+              const dotClass = coverageBg(row.needQuote > 0 ? openAmt / row.needQuote : 0);
+
+              // ancho relativo de la barra (necesita vs máximo)
               const pctBar = Math.min(
                 Math.round(((row.needQuote || 0) / (maxBar || 1)) * 100),
                 100
               );
-
-              const fmtCOP = (n: number) =>
-                (Number(n) || 0).toLocaleString("es-CO", {
-                  style: "currency",
-                  currency: "COP",
-                  maximumFractionDigits: 0,
-                });
-
-              const faltantePct = row.goal
-                ? Math.min(100, Math.round((row.remaining / row.goal) * 100))
-                : 0;
 
               return (
                 <div
@@ -1977,15 +1981,19 @@ const ScreenPipeline = () => {
                   className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
                 >
                   <div className="p-4 flex flex-col gap-2">
-                    {/* Encabezado */}
-                    <div className="flex justify-between items-center">
+                    {/* Encabezado: nombre + % + semáforo */}
+                    <div className="flex items-center justify-between">
                       <div className="font-semibold text-gray-900 text-base">
                         {i + 1}. {row.comercial}
                       </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700">
+                        <span className="tabular-nums">{pctOpen}%</span>
+                        <span className={`inline-block rounded-full ${dotClass} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                      </div>
                     </div>
 
+                    {/* Tarjetas pequeñas */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                      {/* Meta anual */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Meta anual</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
@@ -1993,7 +2001,6 @@ const ScreenPipeline = () => {
                         </div>
                       </div>
 
-                      {/* Ofertas ganadas */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas ganadas</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
@@ -2001,7 +2008,6 @@ const ScreenPipeline = () => {
                         </div>
                       </div>
 
-                      {/* Faltante para cumplimiento */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Faltante para cumplimiento</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
@@ -2009,7 +2015,6 @@ const ScreenPipeline = () => {
                         </div>
                       </div>
 
-                      {/* Necesita cotizar */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Necesita cotizar</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
@@ -2017,15 +2022,13 @@ const ScreenPipeline = () => {
                         </div>
                       </div>
 
-                      {/* Ofertas abiertas */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Ofertas abiertas</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
-                          {fmtCOP(openAmountsByComercial.get(nameKey(row.comercial)) || 0)}
+                          {fmtCOP(openAmt)}
                         </div>
                       </div>
 
-                      {/* Abiertas + perdidas */}
                       <div className="bg-white p-4 rounded-xl border text-center shadow-sm">
                         <div className="text-base md:text-lg font-semibold text-gray-600">Total en ofertas</div>
                         <div className="mt-1 text-3xl md:text-4xl font-normal tabular-nums text-gray-700">
@@ -2034,39 +2037,19 @@ const ScreenPipeline = () => {
                       </div>
                     </div>
 
-                    {/* Barra: abiertas vs lo que necesita cotizar (más ancha + semáforo grande) */}
-                    {(() => {
-                      const openAmt = openAmountsByComercial.get(nameKey(row.comercial)) || 0;
-                      const pctOpen = row.needQuote > 0
-                        ? Math.min(100, Math.round((openAmt / row.needQuote) * 100))
-                        : 0;
-
-                      return (
-                        <div className="mt-3">
-                          <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                            <span className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-700">{pctOpen}%</span>
-                              <span
-                                className={`
-                                  inline-block rounded-full ${coverageColor(row.needQuote > 0 ? (openAmt / row.needQuote) : 0)}
-                                  w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200 shadow
-                                `}
-                              />
-                            </span>
-                            <span>
-                              Abiertas: <b>{fmtCOP(openAmt)}</b> / Necesita: <b>{fmtCOP(row.needQuote)}</b>
-                            </span>
-                          </div>
-
-                          <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
-                            <div
-                              className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
-                              style={{ width: `${pctOpen}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    {/* Barra: abiertas vs necesita (más ancha) */}
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                        <span>Abiertas: <b>{fmtCOP(openAmt)}</b></span>
+                        <span>Necesita: <b>{fmtCOP(row.needQuote)}</b></span>
+                      </div>
+                      <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                        <div
+                          className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                          style={{ width: `${pctOpen}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -2077,7 +2060,6 @@ const ScreenPipeline = () => {
     </div>
   );
 };
-
 
   const ScreenWinRate = () => {
 const [mode, setMode] = React.useState<"cantidad" | "presupuesto">("cantidad");
