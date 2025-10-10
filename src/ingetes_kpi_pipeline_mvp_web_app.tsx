@@ -8,8 +8,11 @@ type MetaRecord = {
   metaAnual: number;
   metaOfertas: number;
   metaVisitas: number;
+  metaLlamadas?: number;   // NEW
+  metaWinRate?: number;    // NEW (%)
 };
 type MetasResponse = { year: number; metas: MetaRecord[] };
+
 
 // === Metas por comercial (Google Apps Script) ===
 // GET público (el que te abre el JSON en el navegador)
@@ -55,6 +58,8 @@ async function fetchMetas(year: number): Promise<MetasResponse> {
     metaAnual: Number(m.metaAnual ?? 0),
     metaOfertas: Number(m.metaOfertas ?? 0),
     metaVisitas: Number(m.metaVisitas ?? 0),
+    metaLlamadas: Number(m.metaLlamadas || 0), // NEW
+    metaWinRate: Number(m.metaWinRate || 0),   // NEW
   }));
 
   return { year: Number(data?.year) || year, metas: parsed };
@@ -106,16 +111,18 @@ async function saveMetasToSheet(year: number, filas: Array<{ comercial: string; 
   const res = await fetch(METAS_POST_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      apiKey: METAS_API_KEY,
-      year,
-      metas: filas.map(f => ({
-        comercial: f.comercial,
-        metaAnual: Number(f.metaAnual || 0),
-        metaOfertas: Number(f.metaOfertas || 0),
-        metaVisitas: Number(f.metaVisitas || 0),
-      })),
-    }),
+body: JSON.stringify({
+  apiKey: METAS_API_KEY,
+  year,
+  metas: filas.map(f => ({
+    comercial: f.comercial,
+    metaAnual: Number(f.metaAnual || 0),
+    metaOfertas: Number(f.metaOfertas || 0),
+    metaVisitas: Number(f.metaVisitas || 0),
+    metaLlamadas: Number((f as any).metaLlamadas || 0), // NEW
+    metaWinRate:  Number((f as any).metaWinRate  || 0), // NEW
+  })),
+})
   });
   if (!res.ok) {
     const txt = await res.text();
@@ -1546,11 +1553,13 @@ async function openSettings() {
     const metas = Array.isArray(data?.metas) ? data.metas : [];
 
     // Normaliza y fuerza números (0 si viene null o string)
-    const rows = metas.map((m: any) => ({
-      comercial: String(m.comercial || "").trim().toUpperCase(),
-      metaAnual: Number(m.metaAnual ?? 0),
-      metaOfertas: Number(m.metaOfertas ?? 0),
-      metaVisitas: Number(m.metaVisitas ?? 0),
+const rows = metas.map((m: any) => ({
+  comercial: String(m.comercial || "").trim().toUpperCase(),
+  metaAnual: Number(m.metaAnual ?? 0),
+  metaOfertas: Number(m.metaOfertas ?? 0),
+  metaVisitas: Number(m.metaVisitas ?? 0),
+  metaLlamadas: Number(m.metaLlamadas ?? 0), // NEW
+  metaWinRate:  Number(m.metaWinRate  ?? 0), // NEW
     }))
     // orden alfabético
     .sort((a: any, b: any) => a.comercial.localeCompare(b.comercial));
@@ -1572,12 +1581,14 @@ async function saveSettings() {
     const payload = {
       apiKey: METAS_API_KEY,       // debe coincidir con getApiKey() del Apps Script
       year: settingsYear,
-      metas: settingsRows.map(r => ({
-        comercial: r.comercial,
-        metaAnual: Number(r.metaAnual || 0),
-        metaOfertas: Number(r.metaOfertas || 0),
-        metaVisitas: Number(r.metaVisitas || 0),
-      })),
+metas: settingsRows.map(r => ({
+  comercial: r.comercial,
+  metaAnual: Number(r.metaAnual || 0),
+  metaOfertas: Number(r.metaOfertas || 0),
+  metaVisitas: Number(r.metaVisitas || 0),
+  metaLlamadas: Number(r.metaLlamadas || 0), // NEW
+  metaWinRate:  Number(r.metaWinRate  || 0), // NEW
+})),
     };
 
     const res = await fetch(METAS_POST_URL, {
@@ -2953,6 +2964,8 @@ const kpi = React.useMemo(() => {
               <th className="py-2 pr-2">Meta anual</th>
               <th className="py-2 pr-2">Meta ofertas</th>
               <th className="py-2 pr-2">Meta visitas</th>
+              <th className="py-2 pr-2">Meta llamadas</th>   {/* NEW */}
+              <th className="py-2 pr-2">Meta win rate (%)</th> {/* NEW */}
             </tr>
           </thead>
           <tbody>
@@ -3004,6 +3017,36 @@ const kpi = React.useMemo(() => {
                     }}
                   />
                 </td>
+                <td className="py-2 pr-2">
+  <input
+    type="number"
+    className="w-24 border rounded px-2 py-1 text-sm text-right"
+    value={r.metaLlamadas ?? 0}
+    onChange={(e) => {
+      const v = Number(e.target.value);
+      setSettingsRows(prev => {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], metaLlamadas: isNaN(v) ? 0 : v };
+        return copy;
+      });
+    }}
+  />
+</td>
+<td className="py-2 pr-2">
+  <input
+    type="number"
+    className="w-24 border rounded px-2 py-1 text-sm text-right"
+    value={r.metaWinRate ?? 0}
+    onChange={(e) => {
+      const v = Number(e.target.value);
+      setSettingsRows(prev => {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], metaWinRate: isNaN(v) ? 0 : v };
+        return copy;
+      });
+    }}
+  />
+</td>
               </tr>
             ))}
             {!loadingSettings && settingsRows.length === 0 && (
