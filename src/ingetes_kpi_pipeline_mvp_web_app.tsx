@@ -3166,7 +3166,7 @@ const kpi = React.useMemo(() => {
         {/* Cargar informes */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-white rounded-xl border">
-            <div className="font-semibold">Archivo RESUMEN (tabla dinámica)</div>
+            <div className="font-semibold">Archivo RESUMEN</div>
             <input
               type="file"
               accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
@@ -3207,29 +3207,24 @@ const kpi = React.useMemo(() => {
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white rounded-xl border flex flex-col">
           <div className="font-semibold">📊 Forecast para cumplir meta</div>
-          <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN + Meta anual + Win Rate 20%</p>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_PIPELINE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
-            <div className="font-semibold">🎯 Tasa de Cierre (Win Rate)</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN</p>
+            <div className="font-semibold">🎯 Tasa de Cierre</div>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_WINRATE")} disabled={!pivot}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">⏱️ Ciclo de venta (días)</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: DETALLADO</p>
             <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_CYCLE")} disabled={!detail}>Ver KPI</button>
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">🏁 Cumplimiento de Meta (Anual)</div>
-<p className="text-xs text-gray-500 mt-1">Fuente: RESUMEN + Meta anual (Sheet)</p>
 <button className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40" onClick={() => setRoute("KPI_ATTAIN")} disabled={!pivot}>Ver KPI</button>
           </div>
         </section>
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">🧾 Ofertas</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: DETALLADO (fecha de oferta)</p>
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_OFFERS")}
@@ -3240,7 +3235,6 @@ const kpi = React.useMemo(() => {
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
             <div className="font-semibold">📅 Visitas</div>
-            <p className="text-xs text-gray-500 mt-1">Fuente: archivo VISITAS</p>
             <button
               className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
               onClick={() => setRoute("KPI_VISITS")}
@@ -3251,7 +3245,6 @@ const kpi = React.useMemo(() => {
           </div>
           <div className="p-4 bg-white rounded-xl border flex flex-col">
   <div className="font-semibold">📌 Actividades</div>
-  <p className="text-xs text-gray-500 mt-1">Fuente: archivo VISITAS (Asunto)</p>
 <button
   className="mt-auto px-3 py-2 rounded bg-black text-white disabled:opacity-40"
   onClick={() => setRoute("KPI_ACTIVITIES")}
