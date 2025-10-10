@@ -576,6 +576,7 @@ function parseActivitiesFromSheet(ws: XLSX.WorkSheet, sheetName: string) {
     }
     const comercial = currentComercial;
     if (!comercial) continue;
+    if (comercial === "(Sin comercial)") continue; // ← NO contamos filas sin comercial
 
     // estado (columna M)
     const estadoRaw = String(row[idxEstado] ?? "");
@@ -2301,6 +2302,17 @@ const ScreenActivities = () => {
     if (!activitiesModel) return { total: 0, porComercial: [] as any[] };
     const rows = activitiesModel.rows || [];
 
+  // Totales por comercial (todas las actividades) para el denominador del %
+const totalsByCom = React.useMemo(() => {
+  const m = new Map<string, number>();
+  const rows = activitiesModel?.rows || [];
+  for (const r of rows) {
+    if (!r?.comercial || r.comercial === "(Sin comercial)") continue; // coherente con el parser
+    m.set(r.comercial, (m.get(r.comercial) || 0) + 1);
+  }
+  return m;
+}, [activitiesModel]);
+
     const by = new Map<string, number>();
     for (const r of rows) {
       if (r.status !== mode) continue;                 // filtra por estado elegido
@@ -2386,22 +2398,23 @@ const ScreenActivities = () => {
               Ranking por comercial ({label.toLowerCase()})
             </div>
             <div className="space-y-2">
-              {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-                const pct = totalFileCount > 0 ? Math.round((row.count / totalFileCount) * 100) : 0;
-                return (
-                  <div key={row.comercial} className="text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">{i + 1}. {row.comercial}</div>
-                      <div className="tabular-nums text-gray-900">
-                        {row.count} ({pct}%)
-                      </div>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, pct) + "%" }} />
-                    </div>
-                  </div>
-                );
-              })}
+{onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
+  const denom = totalsByCom.get(row.comercial) || 0; // total del comercial
+  const pct = denom > 0 ? Math.round((row.count / denom) * 100) : 0; // % del comercial
+  return (
+    <div key={row.comercial} className="text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-medium">{i + 1}. {row.comercial}</div>
+        <div className="tabular-nums text-gray-900">
+          {row.count} ({pct}%)
+        </div>
+      </div>
+      <div className="h-2 bg-gray-200 rounded mt-1">
+        <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, pct) + "%" }} />
+      </div>
+    </div>
+  );
+})}
             </div>
           </section>
         )}
