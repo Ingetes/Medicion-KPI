@@ -16,10 +16,10 @@ type MetasResponse = { year: number; metas: MetaRecord[] };
 
 // === Metas por comercial (Google Apps Script) ===
 // GET público (el que te abre el JSON en el navegador)
-const METAS_GET_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLgYKi_vgRuH8EXtITmadj95wNjzUtI-IrgFtqVvQQm5Vkh6dNCYhtkyNDakA9TrdZo93Wp7umg0Mv_ifW6MEJxqmHHj36hscjlNFAYHBGCcky4NCy_DdYGL9Sk4h3MIg6dcL2R5t-LQTZnkxZ7vAj4Du1z6_DQz8km5U82Qj6Bj08n4l43iTUJr4omgCgPWI6M8idwJcx52QgULieG8HHqaamcztFr9cbH3PwOF9-BWMfJbDHr2EOESEpsEkZJqvWMdZ6LNIose2TikLaOVIowGZdIqZfMZ_e4hhk_v&lib=M_wwqKoJEkvpNDcscez3XfhqGZ0szE9sQ';
+const METAS_GET_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLiBn1XAeIy3OueG8Ya_Okp0lysFebp3K7y9oSVbJ32ekurpohwFbm9-NSLyyKHWd8tDy9XXnmhcdJh46kEsMhufo8FXYX8zeaLRz1cnHQNJGaVIIevptmE_npAILUvG0QJs0z5d5oWuMND0LSei5-mDB5NmUs3aNSJiZvNPq1iJ7t30kd7Kp-VLPdFPMCHaheUdUCOJFFQrXHS2vF13QdD3NmX6f5R6Cw-SLwnayqYezyiIfn3Q_hzIRmDhcsW5fzkkabDqMGib-y2kwN_aVyL3COE-dzVpCumr9HMc&lib=M_wwqKoJEkvpNDcscez3XfhqGZ0szE9sQ';
 
 // POST (deployment /exec público) para guardar cambios
-const METAS_POST_URL =   'https://script.google.com/macros/s/AKfycbxHfSCDgGArZFPLXzKmsw11rpayGLA33fX3kQGxWcgUcv_ymOW5cmgv3DupKBCxHMlzYA/exec'; // <-- pega tu URL /exec
+const METAS_POST_URL =   'https://script.google.com/macros/s/AKfycbwbFmNuGG3Zt1I6WPFR7X06QBsY3Mw5hAc9YqQDNEr6wZyJSe4KZQG9l4Z3iASno5nSJA/exec'; // <-- pega tu URL /exec
 
 // Debe coincidir con la clave del Apps Script (getApiKey → 'INGETES' por defecto)
 const METAS_API_KEY = 'INGETES';
