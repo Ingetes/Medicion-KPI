@@ -229,6 +229,14 @@ function offerStatus(count: number, target: number) {
   return { ratio, bar: "bg-red-500", dot: "bg-red-500", text: "text-red-600" };
 }
 
+// ratio = abiertas / necesita
+function coverageColor(ratio: number) {
+  if (!isFinite(ratio) || ratio <= 0) return "bg-red-500";
+  if (ratio >= 1) return "bg-green-600";
+  if (ratio >= 0.8) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
 // Tarjeta compacta para los 3 recuadros
 const StatCard = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="p-3 bg-gray-100 rounded">
