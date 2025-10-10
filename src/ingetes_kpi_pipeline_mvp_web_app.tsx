@@ -2277,7 +2277,6 @@ const selected = useMemo(() => {
 };
 
 // === ScreenVisits (solo visitas + meeting) ===
-// === ScreenActivities (desde archivo ACTIVIDADES) ===
 const ScreenActivities = () => {
   const [mode, setMode] = React.useState<"completadas" | "vencidas" | "pendientes">("completadas");
 
@@ -2394,8 +2393,8 @@ const ScreenActivities = () => {
   );
 };
 
-// === ScreenActivities (llamadas/visitas/reuniones desde ASUNTO) ===
-const ScreenActivities = () => {
+// === ScreenVisits (llamadas/visitas/reuniones desde ASUNTO) ===
+const ScreenVisits = () => {
   const [mode, setMode] = React.useState<"llamadas" | "visitas" | "reuniones">("visitas");
 
   // Filas del período seleccionado
@@ -2435,7 +2434,7 @@ const ScreenActivities = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Actividades" />
+      <BackBar title="KPI • visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         <section className="p-4 bg-white rounded-xl border">
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
