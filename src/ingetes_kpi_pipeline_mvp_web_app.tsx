@@ -2675,9 +2675,10 @@ const ScreenActivities = () => {
 
 // === ScreenVisits (llamadas/visitas/reuniones desde ASUNTO) ===
 const ScreenVisits = () => {
-// ✅ USAR el estado global
-const mode = visitsMode;
-const setMode = setVisitsMode;
+  // ✅ usar el estado global existente
+  const mode = visitsMode;
+  const setMode = setVisitsMode;
+
   // Filas del período seleccionado
   const periodRows = React.useMemo(() => {
     if (!visitsModel) return [] as any[];
@@ -2686,7 +2687,7 @@ const setMode = setVisitsMode;
     return (visitsModel.rows || []).filter((r: any) => r.ym === sel);
   }, [visitsModel, visitsPeriod]);
 
-  // Agregación por modo (usa r.kind que se armó desde "Asunto")
+  // Agregación por modo (usa r.kind desde "Asunto")
   const data = React.useMemo(() => {
     const by = new Map<string, number>();
     for (const r of periodRows) {
@@ -2696,13 +2697,11 @@ const setMode = setVisitsMode;
     const porComercial = Array.from(by.entries())
       .map(([comercial, count]) => ({ comercial, count }))
       .sort((a, b) => b.count - a.count);
+
     const total = porComercial.reduce((a, x) => a + x.count, 0);
-
-    const sel = (visitsModel?.periods || []).includes(visitsPeriod)
-      ? visitsPeriod
-      : ((visitsModel?.periods || []).slice(-1)[0] || "");
-
-    return { total, porComercial, period: sel, periods: visitsModel?.periods || [] };
+    const periods = visitsModel?.periods || [];
+    const sel = periods.includes(visitsPeriod) ? visitsPeriod : (periods.slice(-1)[0] || "");
+    return { total, porComercial, period: sel, periods };
   }, [periodRows, mode, visitsModel, visitsPeriod]);
 
   // Conteo del seleccionado
@@ -2724,47 +2723,63 @@ const setMode = setVisitsMode;
   const targetSelected = React.useMemo(() => {
     if (mode === "llamadas") return metaLlamadasFor(selectedComercial, yearForVisits);
     if (mode === "visitas")  return metaVisitasFor(selectedComercial, yearForVisits);
-    return 0; // reuniones: por ahora sin meta
+    return 0; // reuniones: sin meta (no mostramos semáforo)
   }, [mode, selectedComercial, yearForVisits, metasByYear]);
+
+  // Máximo del período (para escalar barra cuando no hay meta)
+  const maxCountPeriod = React.useMemo(
+    () => Math.max(1, ...data.porComercial.map((x: any) => x.count || 0)),
+    [data]
+  );
+
+  // Semáforo usando la misma función que Ofertas (verde/amarillo/rojo por cumplimiento)
+  const statusFor = (count: number, target: number) => offerStatus(count, target);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • visitas" />
+      <BackBar title="KPI • Visitas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* Header (estilo Forecast) */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-            <div className="text-sm text-gray-500">
+            <div className="text-base text-gray-700 font-semibold">
               Comercial: <b>{selectedComercial}</b>
             </div>
 
-            <div className="text-sm text-gray-500">
+            <div className="text-base text-gray-700 font-semibold md:ml-auto">
               Periodo:
-<select
-  className="ml-2 border rounded px-2 py-1 text-sm"
-  value={visitsPeriod}
-  onChange={(e) => setVisitsPeriod(e.target.value)}
->
-  {(data.periods || []).map((p: string) => (
-    <option key={p} value={p}>{p}</option>
-  ))}
-</select>
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={visitsPeriod}
+                onChange={(e) => setVisitsPeriod(e.target.value)}
+              >
+                {(data.periods || []).map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Tarjetas superiores */}
+          {/* Tarjetas superiores (3) como Forecast: total, seleccionado, cumplimiento+semaforo */}
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${labelForMode} del período (compañía)`}>{data.total}</StatCard>
-            <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
+            <StatCard label={`${labelForMode} del período (compañía)`}>
+              {data.total}
+            </StatCard>
 
-            {/* Cumplimiento vs meta del Sheet (solo llamadas/visitas) */}
+            <StatCard label="Del comercial seleccionado">
+              {selectedCount}
+            </StatCard>
+
             <StatCard label="Cumplimiento (vs meta)">
               {(() => {
                 const tgt = Number(targetSelected || 0);
-                if (tgt <= 0 || selectedComercial === "ALL" || mode === "reuniones") return "—";
+                if (selectedComercial === "ALL" || mode === "reuniones" || tgt <= 0) return "—";
                 const pct = Math.round((selectedCount / tgt) * 100);
+                const st  = statusFor(selectedCount, tgt);
                 return (
                   <span className="flex items-center gap-2">
                     <span>{pct}% ({selectedCount}/{tgt})</span>
+                    <span className={`inline-block w-5 h-5 rounded-full ${st.dot}`} />
                   </span>
                 );
               })()}
@@ -2776,14 +2791,15 @@ const setMode = setVisitsMode;
           </div>
         </section>
 
-        {/* Ranking por comercial */}
+        {/* Ranking por comercial (look de Forecast: nombre + % + semáforo, barra gruesa) */}
         {visitsModel && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">
-              Ranking por comercial ({labelForMode.toLowerCase()}) · {data.period}
+              {`Ranking por comercial (${labelForMode.toLowerCase()}) · ${data.period}`}
             </div>
-            {/* Botones como en ciclo de ventas */}
-            <div className="md:ml-auto">
+
+            {/* Botonera como en Ciclo de ventas */}
+            <div className="flex items-center justify-center mb-4">
               <div className="inline-flex rounded-lg border overflow-hidden">
                 <button
                   className={`px-3 py-1 text-sm ${mode === "llamadas" ? "bg-gray-900 text-white" : "bg-white"}`}
@@ -2805,10 +2821,11 @@ const setMode = setVisitsMode;
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
+
+            <div className="grid grid-cols-1 gap-3">
               {onlySelected(
                 data.porComercial.map((row: any, i: number) => {
-                  // meta por comercial según modo
+                  // meta por comercial según modo (solo llamadas/visitas)
                   const tgt =
                     mode === "llamadas"
                       ? metaLlamadasFor(row.comercial, yearForVisits)
@@ -2816,34 +2833,70 @@ const setMode = setVisitsMode;
                         ? metaVisitasFor(row.comercial, yearForVisits)
                         : 0;
 
-                  const pct = tgt > 0 ? Math.round((row.count / tgt) * 100) : (mode === "reuniones" ? 0 : 0);
-                  return { ...row, rank: i + 1, tgt, pct };
+                  const pct = tgt > 0 ? Math.round((row.count / tgt) * 100) : 0;
+                  const st  = tgt > 0 ? statusFor(row.count, tgt) : null;
+
+                  return { ...row, rank: i + 1, tgt, pct, st };
                 }),
                 selectedComercial
-              ).map((row: any) => (
-                <div key={row.comercial} className="text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{row.rank}. {row.comercial}</div>
-                    <div className="tabular-nums text-gray-900">
-                      {mode === "reuniones" || row.tgt <= 0
-                        ? row.count
-                        : `${row.count}/${row.tgt} (${row.pct}%)`}
+              ).map((row: any) => {
+                // ancho de barra: si hay meta → % de cumplimiento; si no, relativo al máx del período
+                const barPct =
+                  row.tgt > 0
+                    ? Math.min(100, row.pct)
+                    : Math.min(100, Math.round((row.count / maxCountPeriod) * 100));
+
+                return (
+                  <div
+                    key={row.comercial}
+                    className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                  >
+                    <div className="p-4 flex flex-col gap-2">
+                      {/* Encabezado: nombre + % + semáforo (igual a Forecast) */}
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-gray-900 text-base">
+                          {row.rank}. {row.comercial}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          {row.tgt > 0 ? (
+                            <>
+                              <span className="tabular-nums">
+                                {row.pct}% ({row.count}/{row.tgt})
+                              </span>
+                              <span className={`inline-block rounded-full ${row.st?.dot} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                            </>
+                          ) : (
+                            <span className="tabular-nums">{row.count}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Barra gruesa estilo Forecast */}
+                      <div className="mt-1">
+                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                          {row.tgt > 0 ? (
+                            <>
+                              <span>0%</span>
+                              <span>100% meta</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>0</span>
+                              <span>Máx. del período</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${barPct}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="h-2 bg-gray-200 rounded mt-1">
-                    <div
-                      className="h-2 rounded bg-gray-700"
-                      style={{
-                        width: `${
-                          mode === "reuniones" || row.tgt <= 0
-                            ? Math.min(100, Math.round((row.count / Math.max(1, data.total)) * 100))
-                            : Math.min(100, row.pct)
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
