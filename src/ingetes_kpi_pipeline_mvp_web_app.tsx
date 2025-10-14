@@ -1491,7 +1491,7 @@ function metaLlamadasFor(comercial: string, year: number) {
 function metaWinRateFor(comercial: string, year: number) {
   const arr = metasByYear[year] || [];
   const rec = arr.find(m => m.comercial === normalizeName(comercial));
-  return rec?.metaWinRate ?? 0);
+  return rec?.metaWinRate ?? 0;
 }
 function metaOfertasFor(comercial: string, year: number) {
   const arr = metasByYear[year] || [];
