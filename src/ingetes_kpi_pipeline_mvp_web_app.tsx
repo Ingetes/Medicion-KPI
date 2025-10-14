@@ -2342,12 +2342,12 @@ const ScreenOffers = () => {
   const data = offersKPI;
 
   // Ofertas del comercial seleccionado en el período activo
-const selected = useMemo(() => {
-  if (!offersModel) return 0;
-  if (selectedComercial === "ALL") return data.total;
-  const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
-  return row ? row.count : 0;
-}, [offersModel, data, selectedComercial]);
+  const selected = useMemo(() => {
+    if (!offersModel) return 0;
+    if (selectedComercial === "ALL") return data.total;
+    const row = data.porComercial.find((r: any) => r.comercial === selectedComercial);
+    return row ? row.count : 0;
+  }, [offersModel, data, selectedComercial]);
 
   // Año del período (formato YYYY-MM)
   const yearForOffers = useMemo(
@@ -2361,9 +2361,9 @@ const selected = useMemo(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { metas } = await fetchMetas(yearForOffers); // ya existe en tu archivo
+        const { metas } = await fetchMetas(yearForOffers);
         const map = new Map<string, MetaRecord>();
-        metas.forEach(m => map.set(normName(m.comercial), m)); // normName ya existe
+        metas.forEach(m => map.set(normName(m.comercial), m));
         if (!cancelled) setMetasMap(map);
       } catch {
         if (!cancelled) setMetasMap(new Map());
@@ -2375,9 +2375,9 @@ const selected = useMemo(() => {
   // Meta Ofertas del comercial seleccionado (desde Sheet)
   const targetSelected = metasMap.get(normName(selectedComercial))?.metaOfertas ?? 0;
 
-  // Para el ancho de barra: tope visual (no depende de meta global ya)
-  const max = useMemo(
-    () => data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0) || 1,
+  // Tope para escalar barras
+  const maxCount = useMemo(
+    () => Math.max(1, data.porComercial.reduce((m: number, x: any) => Math.max(m, x.count), 0)),
     [data]
   );
 
@@ -2385,72 +2385,110 @@ const selected = useMemo(() => {
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Ofertas (desde DETALLADO)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
+        {/* Header (mismo estilo que Forecast) */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-base text-gray-700 font-semibold">
+              Comercial: <b>{selectedComercial}</b>
+            </div>
 
-    <div className="text-sm text-gray-500">Periodo:
-      <select
-        className="ml-2 border rounded px-2 py-1 text-sm"
-        value={offersPeriod}
-        onChange={(e) => setOffersPeriod(e.target.value)}
-      >
-        {(data.periods || []).map((p: string) => <option key={p} value={p}>{p}</option>)}
-      </select>
-    </div>
+            <div className="text-base text-gray-700 font-semibold md:ml-auto">
+              Periodo:
+              <select
+                className="ml-2 border rounded px-2 py-1 text-sm"
+                value={offersPeriod}
+                onChange={(e) => setOffersPeriod(e.target.value)}
+                title="Periodo YYYY-MM basado en fecha de creación del DETALLADO"
+              >
+                {(data.periods || []).map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
 
-    <div className="text-sm text-gray-500">
-      Meta mensual: <b className="tabular-nums">{targetSelected}</b>
-    </div>
-  </div>
+            <div className="text-base text-gray-700 font-semibold">
+              Meta mensual: <b className="tabular-nums">{targetSelected}</b>
+            </div>
+          </div>
 
-  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <StatCard label="Ofertas del período (compañía)">{data.total}</StatCard>
-    <StatCard label="Del comercial seleccionado">{selected}</StatCard>
-    <StatCard label="Cumplimiento (vs meta)">
-      {(() => {
-        const pct = targetSelected > 0 ? Math.round((selected / targetSelected) * 100) : (selected > 0 ? 100 : 100);
-        const st  = offerStatus(selected, targetSelected);
-        return (
-          <span className="flex items-center gap-2">
-            <span>{pct}% ({selected}/{targetSelected})</span>
-            <span className={`inline-block w-3 h-3 rounded-full ${st.dot}`} />
-          </span>
-        );
-      })()}
-    </StatCard>
-  </div>
+          {/* Tarjetas superiores (3) */}
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Ofertas del período (compañía)">{data.total}</StatCard>
 
-  <div className="text-xs text-gray-500 mt-2">
-    Fuente: Archivo DETALLADO (una fila = una oferta). Requiere columnas: <em>Comercial</em> y <em>Fecha de oferta</em>.
-  </div>
-</section>
+            <StatCard label="Del comercial seleccionado">{selected}</StatCard>
 
+            <StatCard label="Cumplimiento (vs meta)">
+              {(() => {
+                const tgt = Number(targetSelected || 0);
+                if (selectedComercial === "ALL") return "—";
+                if (tgt <= 0) return `${selected}`;
+                const pct = Math.round((selected / tgt) * 100);
+                const st  = offerStatus(selected, tgt);
+                return (
+                  <span className="flex items-center gap-2">
+                    <span>{pct}% ({selected}/{tgt})</span>
+                    <span className={`inline-block w-4 h-4 rounded-full ${st.dot}`} />
+                  </span>
+                );
+              })()}
+            </StatCard>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-3">
+            Fuente: archivo <em>DETALLADO</em>. Una fila = una oferta creada en el período seleccionado (YYYY-MM).
+          </div>
+        </section>
+
+        {/* Ranking por comercial (estilo Forecast) */}
         {offersModel && (
           <section className="p-4 bg-white rounded-xl border">
-            <div className="mb-3 font-semibold">Ranking de ofertas por comercial ({data.period})</div>
-            <div className="space-y-2">
+            <div className="mb-3 font-semibold text-gray-800">
+              Ranking por comercial ({data.period})
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
               {onlySelected(data.porComercial, selectedComercial).map((row: any, i: number) => {
-                const target = metasMap.get(normName(row.comercial))?.metaOfertas ?? 0;
-                const pct = target > 0
-                  ? Math.round((row.count / target) * 100)
-                  : (row.count > 0 ? 100 : 100);
-                const pctBar = Math.min(100, pct);
-                const st = offerStatus(row.count, target);
+                const tgt = metasMap.get(normName(row.comercial))?.metaOfertas ?? 0;
+                const pct = tgt > 0 ? Math.round((row.count / tgt) * 100) : 0;
+                const st  = offerStatus(row.count, tgt);
+
+                // barra: ancho relativo al máximo del período (como Forecast)
+                const pctBar = Math.min(100, Math.round((row.count / maxCount) * 100));
 
                 return (
-                  <div key={row.comercial} className="text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">{i + 1}. {row.comercial}</div>
-                      <div className="flex items-center gap-2">
-                        <span className="tabular-nums text-gray-900">
-                          {pct}% ({row.count}/{target})
-                        </span>
-                        <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                  <div
+                    key={row.comercial}
+                    className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                  >
+                    <div className="p-4 flex flex-col gap-2">
+                      {/* Encabezado: nombre + % + semáforo (alineado al Forecast) */}
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-gray-900 text-base">
+                          {i + 1}. {row.comercial}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <span className="tabular-nums">
+                            {tgt > 0 ? `${pct}% (${row.count}/${tgt})` : row.count}
+                          </span>
+                          {tgt > 0 && (
+                            <span className={`inline-block rounded-full ${st.dot} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded mt-1">
-                      <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+
+                      {/* Barra gruesa tipo Forecast */}
+                      <div className="mt-1">
+                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                          <span>0</span>
+                          <span>Máx. del período</span>
+                        </div>
+                        <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${pctBar}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
