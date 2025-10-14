@@ -1959,7 +1959,7 @@ const ScreenPipeline = () => {
               Comercial: <b>{selectedComercial}</b>
             </div>
             <div className="text-base text-gray-700 font-semibold">
-              Año (Sheet): <b>{settingsYear}</b>
+              Año: <b>{settingsYear}</b>
             </div>
             {selectedComercial !== "ALL" && (
               <div className="md:ml-auto">
@@ -2400,14 +2400,14 @@ const selected = useMemo(() => {
     </div>
 
     <div className="text-sm text-gray-500">
-      Meta mensual (Sheet): <b className="tabular-nums">{targetSelected}</b>
+      Meta mensual: <b className="tabular-nums">{targetSelected}</b>
     </div>
   </div>
 
   <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
     <StatCard label="Ofertas del período (compañía)">{data.total}</StatCard>
     <StatCard label="Del comercial seleccionado">{selected}</StatCard>
-    <StatCard label="Cumplimiento (vs meta del Sheet)">
+    <StatCard label="Cumplimiento (vs meta)">
       {(() => {
         const pct = targetSelected > 0 ? Math.round((selected / targetSelected) * 100) : (selected > 0 ? 100 : 100);
         const st  = offerStatus(selected, targetSelected);
@@ -2719,7 +2719,7 @@ const setMode = setVisitsMode;
             <StatCard label="Del comercial seleccionado">{selectedCount}</StatCard>
 
             {/* Cumplimiento vs meta del Sheet (solo llamadas/visitas) */}
-            <StatCard label="Cumplimiento (vs meta del Sheet)">
+            <StatCard label="Cumplimiento (vs meta)">
               {(() => {
                 const tgt = Number(targetSelected || 0);
                 if (tgt <= 0 || selectedComercial === "ALL" || mode === "reuniones") return "—";
@@ -3047,7 +3047,7 @@ const ScreenAttainment = () => {
               Comercial: <b>{selectedComercial}</b>
             </div>
             <div className="text-base text-gray-700 font-semibold">
-              Año (Sheet): <b>{settingsYear}</b>
+              Año: <b>{settingsYear}</b>
             </div>
           </div>
 
@@ -3070,7 +3070,7 @@ const ScreenAttainment = () => {
 
         {/* Ranking por comercial (barra gruesa + % con “semaforo”) */}
         <section className="p-4 bg-white rounded-xl border">
-          <div className="mb-3 font-semibold">Ranking por comercial (cumplimiento vs meta anual del Sheet)</div>
+          <div className="mb-3 font-semibold">Ranking por comercial (cumplimiento vs meta anual)</div>
           <div className="grid grid-cols-1 gap-3">
             {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
               const pct = Math.round(row.pct);
