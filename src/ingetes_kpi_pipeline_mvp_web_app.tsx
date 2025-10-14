@@ -2383,7 +2383,7 @@ const ScreenOffers = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Ofertas (desde DETALLADO)" />
+      <BackBar title="KPI • Ofertas" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header (mismo estilo que Forecast) */}
         <section className="p-4 bg-white rounded-xl border">
