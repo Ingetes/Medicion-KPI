@@ -2120,9 +2120,9 @@ const ScreenPipeline = () => {
 
                     {/* Barra: abiertas vs necesita */}
                     <div className="mt-3">
-                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                        <span>Abiertas: <b>{fmtCOP(openAmt)}</b></span>
-                        <span>Necesita: <b>{fmtCOP(row.needQuote)}</b></span>
+                      <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                        <span>Abiertas: <b className="text-base tabular-nums">{fmtCOP(openAmt)}</b></span>
+                        <span>Necesita: <b className="text-base tabular-nums">{fmtCOP(row.needQuote)}</b></span>
                       </div>
                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                         <div
@@ -2310,21 +2310,22 @@ const ScreenWinRate = () => {
                       </div>
 
                       {/* Barra más ancha + leyendas a los lados (como Forecast) */}
-                      <div className="mt-1">
-                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                          <span>Ganadas</span>
-                          <span>Totales</span>
-                        </div>
-                        <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
-                          <div
-                            className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 text-xs text-gray-500 text-right">
-                          {pairTxt}
-                        </div>
-                      </div>
+                     <div className="mt-1">
+                       <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                         <span className="tabular-nums font-semibold">
+                           {mode === "presupuesto" ? money(won) : won} <span className="font-normal">Ganadas</span>
+                         </span>
+                         <span className="tabular-nums font-semibold">
+                           {mode === "presupuesto" ? money(tot) : tot} <span className="font-normal">Totales</span>
+                         </span>
+                       </div>
+                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                         <div
+                           className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                           style={{ width: `${pct}%` }}
+                         />
+                       </div>
+                     </div>
                     </div>
                   </div>
                 );
@@ -2453,8 +2454,9 @@ const ScreenOffers = () => {
                 const st  = offerStatus(row.count, tgt);
 
                 // barra: ancho relativo al máximo del período (como Forecast)
-                const pctBar = Math.min(100, Math.round((row.count / maxCount) * 100));
-
+                const pctBar = tgt > 0
+                  ? Math.min(100, Math.round((row.count / Math.max(1, tgt)) * 100))
+                  : Math.min(100, Math.round((row.count / maxCount) * 100));
                 return (
                   <div
                     key={row.comercial}
@@ -2478,9 +2480,9 @@ const ScreenOffers = () => {
 
                       {/* Barra gruesa tipo Forecast */}
                       <div className="mt-1">
-                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                          <span>0</span>
-                          <span>Máx. del período</span>
+                        <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                          <span className="tabular-nums font-semibold">{row.count}</span>
+                          <span className="tabular-nums font-semibold">{tgt > 0 ? tgt : maxCount}</span>
                         </div>
                         <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                           <div
@@ -2682,9 +2684,9 @@ const ScreenActivities = () => {
 
                     {/* Barra gruesa (0–100%) */}
                     <div className="mt-1">
-                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                        <span>0%</span>
-                        <span>100%</span>
+                      <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                        <span className="tabular-nums font-semibold">{row.count}</span>
+                        <span className="tabular-nums font-semibold">{row.denom}</span>
                       </div>
                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                         <div
@@ -2889,33 +2891,33 @@ const ScreenVisits = () => {
                           {row.rank}. {row.comercial}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-700">
-                          {row.tgt > 0 ? (
-                            <>
-                              <span className="tabular-nums">
-                                {row.pct}% ({row.count}/{row.tgt})
-                              </span>
-                              <span className={`inline-block rounded-full ${row.st?.dot} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
-                            </>
-                          ) : (
-                            <span className="tabular-nums">{row.count}</span>
-                          )}
+                         {row.tgt > 0 ? (
+                           <>
+                             <span className="tabular-nums font-semibold">
+                               {row.count}/{row.tgt}
+                             </span>
+                             <span className={`inline-block rounded-full ${row.st?.dot} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                           </>
+                         ) : (
+                           <span className="tabular-nums font-semibold">{row.count}</span>
+                         )}
                         </div>
                       </div>
 
                       {/* Barra gruesa estilo Forecast */}
                       <div className="mt-1">
                         <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                          {row.tgt > 0 ? (
-                            <>
-                              <span>0%</span>
-                              <span>100% meta</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>0</span>
-                              <span>Máx. del período</span>
-                            </>
-                          )}
+                         {row.tgt > 0 ? (
+                           <>
+                             <span className="tabular-nums font-semibold">{row.count}</span>
+                             <span className="tabular-nums font-semibold">{row.tgt}</span>
+                           </>
+                         ) : (
+                           <>
+                             <span className="tabular-nums font-semibold">{row.count}</span>
+                             <span className="tabular-nums font-semibold">{maxCountPeriod}</span>
+                           </>
+                         )}
                         </div>
                         <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                           <div
@@ -2993,7 +2995,7 @@ const ScreenCycle = () => {
 
                 <StatCard label="Promedio (seleccionado)">
                   <span className="flex items-center gap-2">
-                    <span>{selAvg} días</span>
+                    <span className="text-3xl md:text-4xl font-normal tabular-nums">{selAvg} días</span>
                     <span className={`inline-block rounded-full ${colorDays(selAvg)} w-6 h-6 md:w-7 md:h-7 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
                   </span>
                 </StatCard>
@@ -3056,7 +3058,8 @@ const ScreenCycle = () => {
                           {i + 1}. {row.comercial}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <span className="tabular-nums">{avg} días (n={row.n})</span>
+                          <span className="tabular-nums text-base font-semibold">{avg} días</span>
+                          <span className="text-sm text-gray-500">(n={row.n})</span>
                           <span className={`inline-block rounded-full ${colorDays(avg)} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
                         </div>
                       </div>
@@ -3216,9 +3219,9 @@ const ScreenAttainment = () => {
 
                     {/* Barra ancha tipo Forecast */}
                     <div className="mt-1">
-                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                        <span>{fmtCOP(row.wonCOP)}</span>
-                        <span>{fmtCOP(row.goal)}</span>
+                      <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                        <span className="tabular-nums font-semibold">{fmtCOP(row.wonCOP)}</span>
+                        <span className="tabular-nums font-semibold">{fmtCOP(row.goal)}</span>
                       </div>
                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                         <div
