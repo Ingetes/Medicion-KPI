@@ -2501,37 +2501,34 @@ const ScreenOffers = () => {
   );
 };
 
-// === ScreenActivities (Total / Mensual con filtro por G = fecha de creación) ===
+// === ScreenActivities (Total / Mensual con filtro por Fecha de creación) ===
 const ScreenActivities = () => {
   const [mode, setMode] = React.useState<"completadas" | "vencidas" | "pendientes">("completadas");
   const [scope, setScope] = React.useState<"total" | "mensual">("total");
   const [period, setPeriod] = React.useState<string>("");
 
-  // Periodos disponibles (YYYY-MM) desde fecha de creación (columna G)
-  const periods = React.useMemo(() => {
-    return activitiesModel?.periods || [];
-  }, [activitiesModel]);
+  // Periodos disponibles (YYYY-MM) desde fecha de creación del archivo (tu parser ya los arma)
+  const periods = React.useMemo(() => activitiesModel?.periods || [], [activitiesModel]);
 
-  // Filas según alcance (total o mensual por G)
+  // Filas según alcance (total o mensual por createdYM)
   const scopedRows = React.useMemo(() => {
     const all = activitiesModel?.rows || [];
-    if (scope === "mensual" && period) {
-      return all.filter((r: any) => r.createdYM === period);
-    }
+    if (scope === "mensual" && period) return all.filter((r: any) => r.createdYM === period);
     return all;
   }, [activitiesModel, scope, period]);
 
-  // Denominador para el %: total de actividades del comercial en el ÁMBITO seleccionado
+  // Denominador: total de actividades del comercial en el ÁMBITO elegido (para el %)
   const totalsByCom = React.useMemo(() => {
     const m = new Map<string, number>();
     for (const r of scopedRows) {
-      if (!r?.comercial || r.comercial === "(Sin comercial)") continue;
-      m.set(r.comercial, (m.get(r.comercial) || 0) + 1);
+      const c = r?.comercial;
+      if (!c || c === "(Sin comercial)") continue; // fuera “Sin comercial”
+      m.set(c, (m.get(c) || 0) + 1);
     }
     return m;
   }, [scopedRows]);
 
-  // Datos por estado seleccionado
+  // Datos por estado (completadas/vencidas/pendientes)
   const data = React.useMemo(() => {
     const by = new Map<string, number>();
     for (const r of scopedRows) {
@@ -2555,19 +2552,20 @@ const ScreenActivities = () => {
     : mode === "vencidas" ? "Vencidas"
     : "Pendientes";
 
-  const totalFileCount = scopedRows.length; // total en el ámbito (total o ese mes)
+  const totalFileCount = scopedRows.length; // total de actividades en el ámbito
 
   return (
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Actividades" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
+        {/* Header / tarjetas (estilo Forecast) */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-            <div className="text-sm text-gray-500">
+            <div className="text-base text-gray-700 font-semibold">
               Comercial: <b>{selectedComercial}</b>
             </div>
 
-            {/* Selector de ámbito: Total / Mensual */}
+            {/* Alcance: Total / Mensual + Mes */}
             <div className="md:ml-auto flex items-center gap-2">
               <div className="inline-flex rounded-lg border overflow-hidden">
                 <button
@@ -2580,7 +2578,6 @@ const ScreenActivities = () => {
                   className={`px-3 py-1 text-sm border-l ${scope === "mensual" ? "bg-gray-900 text-white" : "bg-white"}`}
                   onClick={() => {
                     setScope("mensual");
-                    // si no hay período seleccionado, intenta poner el último disponible
                     if (!period && periods.length) setPeriod(periods[periods.length - 1]);
                   }}
                 >
@@ -2593,7 +2590,7 @@ const ScreenActivities = () => {
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
                 disabled={scope === "total"}
-                title="Mes (YYYY-MM) basado en Fecha de creación (columna G)"
+                title="Mes (YYYY-MM) basado en Fecha de creación"
               >
                 <option value="">—</option>
                 {periods.map((p: string) => (
@@ -2605,63 +2602,97 @@ const ScreenActivities = () => {
 
           {/* Tarjetas superiores */}
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label={`${label} (${scope === "total" ? "total" : period || "mes"})`}>
-              {data.total} / {totalFileCount}
-            </StatCard>
-            <StatCard label="Del comercial seleccionado">
-              {selectedCount}
-            </StatCard>
-            <StatCard label="Meta">—</StatCard>
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">{`${label} (${scope === "total" ? "total" : period || "mes"})`}</div>
+              <div className="text-2xl font-bold tabular-nums text-gray-900">
+                {data.total} / {totalFileCount}
+              </div>
+            </div>
+
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Del comercial seleccionado</div>
+              <div className="text-2xl font-bold tabular-nums text-gray-900">
+                {selectedCount}
+              </div>
+            </div>
+
+            <div className="p-3 bg-gray-100 rounded">
+              <div className="text-xs text-gray-500">Meta</div>
+              <div className="text-2xl font-bold tabular-nums text-gray-900">—</div>
+            </div>
           </div>
         </section>
 
-        {/* Ranking */}
+        {/* Ranking por comercial (barra gruesa + % a la derecha) */}
         {activitiesModel && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">
               Ranking por comercial ({label.toLowerCase()}) · {scope === "total" ? "Total" : (period || "—")}
             </div>
-                     {/* Botonera de estado (igual estilo que Sales Cycle) */}
-          <div className="mt-3">
-            <div className="inline-flex rounded-lg border overflow-hidden">
-              <button
-                className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                onClick={() => setMode("completadas")}
-              >
-                Completadas
-              </button>
-              <button
-                className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
-                onClick={() => setMode("vencidas")}
-              >
-                Vencidas
-              </button>
-              <button
-                className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
-                onClick={() => setMode("pendientes")}
-              >
-                Pendientes
-              </button>
+
+            {/* Botonera de estado (como Sales Cycle) */}
+            <div className="mb-4 flex items-center justify-center">
+              <div className="inline-flex rounded-lg border overflow-hidden">
+                <button
+                  className={`px-3 py-1 text-sm ${mode === "completadas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("completadas")}
+                >
+                  Completadas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "vencidas" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("vencidas")}
+                >
+                  Vencidas
+                </button>
+                <button
+                  className={`px-3 py-1 text-sm border-l ${mode === "pendientes" ? "bg-gray-900 text-white" : "bg-white"}`}
+                  onClick={() => setMode("pendientes")}
+                >
+                  Pendientes
+                </button>
+              </div>
             </div>
-          </div>
-            <div className="space-y-2">
+
+            <div className="grid grid-cols-1 gap-3">
               {onlySelected(
                 data.porComercial.map((row: any, i: number) => {
                   const denom = totalsByCom.get(row.comercial) || 0; // total del comercial en el ámbito
                   const pct = denom > 0 ? Math.round((row.count / denom) * 100) : 0;
-                  return { ...row, rank: i + 1, pct };
+                  return { ...row, rank: i + 1, pct, denom };
                 }),
                 selectedComercial
               ).map((row: any) => (
-                <div key={row.comercial} className="text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{row.rank}. {row.comercial}</div>
-                    <div className="tabular-nums text-gray-900">
-                      {row.count} ({row.pct}%)
+                <div
+                  key={row.comercial}
+                  className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                >
+                  <div className="p-4 flex flex-col gap-2">
+                    {/* Encabezado: nombre + % a la derecha (como Forecast) */}
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-gray-900 text-base">
+                        {row.rank}. {row.comercial}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700">
+                        <span className="tabular-nums">
+                          {row.denom > 0 ? `${row.pct}% (${row.count}/${row.denom})` : row.count}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded mt-1">
-                    <div className="h-2 rounded bg-gray-700" style={{ width: Math.min(100, row.pct) + "%" }} />
+
+                    {/* Barra gruesa (0–100%) */}
+                    <div className="mt-1">
+                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                        <span>0%</span>
+                        <span>100%</span>
+                      </div>
+                      <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                        <div
+                          className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                          style={{ width: `${Math.min(100, row.pct)}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
