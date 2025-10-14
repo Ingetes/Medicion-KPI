@@ -1817,7 +1817,7 @@ const ScreenPipeline = () => {
   if (!pivot) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
+        <BackBar title="KPI • Forecast de meta" />
         <main className="max-w-6xl mx-auto p-4">
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
             Carga primero el archivo <b>RESUMEN</b> para ver este KPI.
@@ -1950,7 +1950,7 @@ const ScreenPipeline = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Forecast de meta (cotización necesaria)" />
+      <BackBar title="KPI • Forecast de meta" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header (sin control de WR global) */}
         <section className="p-4 bg-white rounded-xl border">
@@ -2189,7 +2189,7 @@ const ScreenWinRate = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackBar title="KPI • Tasa de Cierre (Win Rate)" />
+      <BackBar title="KPI • Tasa de Cierre" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* Header (igual estructura del Forecast) */}
         <section className="p-4 bg-white rounded-xl border">
