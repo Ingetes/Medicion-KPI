@@ -2310,22 +2310,28 @@ const ScreenWinRate = () => {
                       </div>
 
                       {/* Barra más ancha + leyendas a los lados (como Forecast) */}
-                     <div className="mt-1">
-                       <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-                         <span className="tabular-nums font-semibold">
-                           {mode === "presupuesto" ? money(won) : won} <span className="font-normal">Ganadas</span>
-                         </span>
-                         <span className="tabular-nums font-semibold">
-                           {mode === "presupuesto" ? money(tot) : tot} <span className="font-normal">Totales</span>
-                         </span>
-                       </div>
-                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
-                         <div
-                           className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
-                           style={{ width: `${pct}%` }}
-                         />
-                       </div>
-                     </div>
+                      <div className="mt-1">
+                        <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                          <span>
+                            <b className="text-base tabular-nums">
+                              {mode === "presupuesto" ? money(won) : won}
+                            </b>{" "}
+                            <span className="font-normal">Ganadas</span>
+                          </span>
+                          <span>
+                            <b className="text-base tabular-nums">
+                              {mode === "presupuesto" ? money(tot) : tot}
+                            </b>{" "}
+                            <span className="font-normal">Totales</span>
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -2481,8 +2487,8 @@ const ScreenOffers = () => {
                       {/* Barra gruesa tipo Forecast */}
                       <div className="mt-1">
                         <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-                          <span className="tabular-nums font-semibold">{row.count}</span>
-                          <span className="tabular-nums font-semibold">{tgt > 0 ? tgt : maxCount}</span>
+                          <span className="tabular-nums font-semibold"><b className="text-base">{row.count}</b></span>
+                          <span className="tabular-nums font-semibold"><b className="text-base">{tgt > 0 ? tgt : maxCount}</b></span>
                         </div>
                         <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                           <div
@@ -2685,8 +2691,12 @@ const ScreenActivities = () => {
                     {/* Barra gruesa (0–100%) */}
                     <div className="mt-1">
                       <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-                        <span className="tabular-nums font-semibold">{row.count}</span>
-                        <span className="tabular-nums font-semibold">{row.denom}</span>
+                        <span className="tabular-nums font-semibold">
+                          <b className="text-base">{row.count}</b>
+                        </span>
+                        <span className="tabular-nums font-semibold">
+                          <b className="text-base">{row.denom}</b>
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                         <div
@@ -2906,18 +2916,13 @@ const ScreenVisits = () => {
 
                       {/* Barra gruesa estilo Forecast */}
                       <div className="mt-1">
-                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                         {row.tgt > 0 ? (
-                           <>
-                             <span className="tabular-nums font-semibold">{row.count}</span>
-                             <span className="tabular-nums font-semibold">{row.tgt}</span>
-                           </>
-                         ) : (
-                           <>
-                             <span className="tabular-nums font-semibold">{row.count}</span>
-                             <span className="tabular-nums font-semibold">{maxCountPeriod}</span>
-                           </>
-                         )}
+                        <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                          <span className="tabular-nums font-semibold">
+                            <b className="text-base">{row.count}</b>
+                          </span>
+                          <span className="tabular-nums font-semibold">
+                            <b className="text-base">{row.tgt > 0 ? row.tgt : maxCountPeriod}</b>
+                          </span>
                         </div>
                         <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                           <div
@@ -3066,9 +3071,9 @@ const ScreenCycle = () => {
 
                       {/* Barra más ancha tipo Forecast */}
                       <div className="mt-1">
-                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
-                          <span>0 días</span>
-                          <span>Máx. periodo</span>
+                        <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                          <span className="tabular-nums font-semibold"><b className="text-base">0 días</b></span>
+                          <span className="tabular-nums font-semibold"><b className="text-base">Máx. periodo</b></span>
                         </div>
                         <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                           <div
@@ -3220,8 +3225,12 @@ const ScreenAttainment = () => {
                     {/* Barra ancha tipo Forecast */}
                     <div className="mt-1">
                       <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-                        <span className="tabular-nums font-semibold">{fmtCOP(row.wonCOP)}</span>
-                        <span className="tabular-nums font-semibold">{fmtCOP(row.goal)}</span>
+                        <span className="tabular-nums font-semibold">
+                          <b className="text-base">{fmtCOP(row.wonCOP)}</b>
+                        </span>
+                        <span className="tabular-nums font-semibold">
+                          <b className="text-base">{fmtCOP(row.goal)}</b>
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
                         <div
