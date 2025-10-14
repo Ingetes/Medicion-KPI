@@ -2815,21 +2815,22 @@ const setMode = setVisitsMode;
 };
 
 const ScreenCycle = () => {
-  // Usa el memo que arma los datos según cycleMode
+  // Usa el memo que arma los datos según cycleMode (ya existe arriba)
   const cd = useMemo(() => cycleData, [cycleData]);
 
   // Color del semáforo según meta de días
   const colorDays = (d: number) =>
-    d <= cycleTarget ? "bg-green-500" :
-    d <= cycleTarget * 1.2 ? "bg-yellow-400" : "bg-red-500";
+    d <= cycleTarget ? "bg-green-600"
+    : d <= cycleTarget * 1.2 ? "bg-yellow-500"
+    : "bg-red-500";
 
-  // Valor grande de la tarjeta superior (siempre promedio de días)
-const headerValue = useMemo(() => {
-  if (!detail || !cd?.data) return 0;
-  if (selectedComercial === "ALL") return cd.data.totalAvgDays || 0;
-  const row = (cd.data.porComercial || []).find((r: any) => r.comercial === selectedComercial);
-  return row ? (row.avgDays || 0) : 0;
-}, [detail, cd, selectedComercial]);
+  // Valor grande de la tarjeta superior (promedio de días)
+  const headerValue = useMemo(() => {
+    if (!detail || !cd?.data) return 0;
+    if (selectedComercial === "ALL") return cd.data.totalAvgDays || 0;
+    const row = (cd.data.porComercial || []).find((r: any) => r.comercial === selectedComercial);
+    return row ? (row.avgDays || 0) : 0;
+  }, [detail, cd, selectedComercial]);
 
   // Máximo para escalar barras
   const maxBar = useMemo(() => {
@@ -2843,46 +2844,52 @@ const headerValue = useMemo(() => {
       <BackBar title="KPI • Ciclo de venta (días)" />
 
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* Tarjeta superior */}
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
-    <div className="text-sm text-gray-500">Meta (días): <b>{cycleTarget}</b></div>
-  </div>
+        {/* Header / tarjetas superiores (mismo estilo) */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-base text-gray-700 font-semibold">
+              Comercial: <b>{selectedComercial}</b>
+            </div>
+            <div className="text-base text-gray-700 font-semibold md:ml-auto">
+              Meta (días): <b>{cycleTarget}</b>
+            </div>
+          </div>
 
-  {(() => {
-    const totalAvg = Math.round(cd?.data?.totalAvgDays || 0);
-    const rowSel = selectedComercial === "ALL"
-      ? null
-      : (cd?.data?.porComercial || []).find((r: any) => r.comercial === selectedComercial);
-    const selAvg = Math.round(rowSel?.avgDays || 0);
+          {(() => {
+            const totalAvg = Math.round(cd?.data?.totalAvgDays || 0);
+            const rowSel = selectedComercial === "ALL"
+              ? null
+              : (cd?.data?.porComercial || []).find((r: any) => r.comercial === selectedComercial);
+            const selAvg = Math.round(rowSel?.avgDays || 0);
 
-    // Cumplimiento: a menos días es mejor → target / promedio (cap 200%)
-    const cumpl = selAvg > 0 ? Math.min(200, Math.round((cycleTarget / selAvg) * 100)) : 0;
+            // Cumplimiento: a menos días es mejor → target / promedio (cap 200%)
+            const cumpl = selAvg > 0 ? Math.min(200, Math.round((cycleTarget / selAvg) * 100)) : 0;
 
-    return (
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Promedio (compañía)">{totalAvg} días</StatCard>
-        <StatCard label="Promedio (seleccionado)">
-          <span className="flex items-center gap-2">
-            <span>{selAvg} días</span>
-            <span className={`inline-block w-3 h-3 rounded-full ${colorDays(selAvg)}`} />
-          </span>
-        </StatCard>
-        <StatCard label="Cumplimiento vs meta (días)">
-          {cumpl}%
-        </StatCard>
-      </div>
-    );
-  })()}
-</section>
-        
-        {/* Selector de modo */}
+            return (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatCard label="Promedio (compañía)">{totalAvg} días</StatCard>
+
+                <StatCard label="Promedio (seleccionado)">
+                  <span className="flex items-center gap-2">
+                    <span>{selAvg} días</span>
+                    <span className={`inline-block rounded-full ${colorDays(selAvg)} w-6 h-6 md:w-7 md:h-7 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                  </span>
+                </StatCard>
+
+                <StatCard label="Cumplimiento vs meta (días)">
+                  {cumpl}%
+                </StatCard>
+              </div>
+            );
+          })()}
+        </section>
+
+        {/* Selector de modo (mismo look que Forecast/WinRate) */}
         {detail && (
           <section className="p-4 bg-white rounded-xl border">
             <div className="mb-3 font-semibold">Sales Cycle por comercial</div>
 
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
               <span className="text-sm text-gray-600">Modo:</span>
               <div className="inline-flex rounded-lg border overflow-hidden">
                 <button
@@ -2909,26 +2916,42 @@ const headerValue = useMemo(() => {
               </div>
             </div>
 
-            {/* Lista por comercial */}
-            <div className="space-y-2">
-              {onlySelected((cd?.data?.porComercial || []), selectedComercial).map((row: any) => {
-                const pct = Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100);
+            {/* Lista por comercial con barra ancha + semáforo a la derecha */}
+            <div className="grid grid-cols-1 gap-3">
+              {onlySelected((cd?.data?.porComercial || []), selectedComercial).map((row: any, i: number) => {
+                const avg = Math.round(row.avgDays || 0);
+                const pctBar = Math.min(100, Math.round(((row.avgDays || 0) / (maxBar || 1)) * 100));
+
                 return (
-                  <div key={row.comercial} className="text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">{row.comercial}</span>
-                      <span className="flex items-center gap-2">
-                        <span className={`inline-block w-2 h-2 rounded-full ${colorDays(row.avgDays || 0)}`}></span>
-                        <span className="tabular-nums text-gray-900">
-                          {Math.round(row.avgDays || 0)} días (n={row.n})
-                        </span>
-                      </span>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded">
-                      <div
-                        className="h-2 rounded bg-gray-700"
-                        style={{ width: pct + "%" }}
-                      />
+                  <div
+                    key={row.comercial}
+                    className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                  >
+                    <div className="p-4 flex flex-col gap-2">
+                      {/* Encabezado alineado como Forecast */}
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-gray-900 text-base">
+                          {i + 1}. {row.comercial}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <span className="tabular-nums">{avg} días (n={row.n})</span>
+                          <span className={`inline-block rounded-full ${colorDays(avg)} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                        </div>
+                      </div>
+
+                      {/* Barra más ancha tipo Forecast */}
+                      <div className="mt-1">
+                        <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                          <span>0 días</span>
+                          <span>Máx. periodo</span>
+                        </div>
+                        <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${pctBar}%` }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
