@@ -2984,7 +2984,6 @@ const offersKPI = useMemo(() => {
   return { total, porComercial, periods, period: sel };
 }, [offersModel, offersPeriod]);
 
-
 // === ScreenAttainment ===
 const ScreenAttainment = () => {
   // `pivot` debe existir (viene del RESUMEN que ya cargas en tu app)
@@ -3007,10 +3006,9 @@ const ScreenAttainment = () => {
     let cancelled = false;
     (async () => {
       try {
-        // fetchMetas(year) ya existe en tu archivo y devuelve { year, metas }
         const { metas } = await fetchMetas(settingsYear);
         const map = new Map<string, any>();
-        metas.forEach((m: any) => map.set(normName(m.comercial), m)); // normName ya existe
+        metas.forEach((m: any) => map.set(normName(m.comercial), m));
         if (!cancelled) setMetasMap(map);
       } catch {
         if (!cancelled) setMetasMap(new Map());
@@ -3019,17 +3017,14 @@ const ScreenAttainment = () => {
     return () => { cancelled = true; };
   }, [settingsYear]);
 
-  // Helper: meta anual del comercial (si no hay en hoja, 0)
   const goalFor = React.useCallback((com: string) => {
     return metasMap.get(normName(com))?.metaAnual ?? 0;
   }, [metasMap]);
 
-  // ================== Construir KPI desde el pivot ==================
-  type RowAtt = { comercial: string; wonCOP: number; goal: number; pct: number };
-
-const kpi = React.useMemo(() => {
-  return calcAttainmentFromPivot(pivot, goalFor);
-}, [pivot, goalFor]);
+  // ================== KPI desde el pivot ==================
+  const kpi = React.useMemo(() => {
+    return calcAttainmentFromPivot(pivot, goalFor);
+  }, [pivot, goalFor]);
 
   // Comercial seleccionado
   const selectedAtt = React.useMemo(() => {
@@ -3038,7 +3033,6 @@ const kpi = React.useMemo(() => {
     return row || { comercial: selectedComercial, wonCOP: 0, goal: goalFor(selectedComercial), pct: 0 };
   }, [kpi, selectedComercial, goalFor]);
 
-  // Formateo COP local (evita depender de util externo)
   const fmtCOP = (n: number) =>
     (Number(n) || 0).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 
@@ -3046,51 +3040,71 @@ const kpi = React.useMemo(() => {
     <div className="min-h-screen bg-gray-50">
       <BackBar title="KPI • Cumplimiento de Meta (Anual)" />
       <main className="max-w-6xl mx-auto p-4 space-y-6">
-        {/* Header / filtros */}
-<section className="p-4 bg-white rounded-xl border">
-  <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-    <div className="text-sm text-gray-500">Comercial: <b>{selectedComercial}</b></div>
-    <div className="text-sm text-gray-500">Año (Sheet): <b>{settingsYear}</b></div>
-  </div>
+        {/* Header / tarjetas superiores (estilo Forecast) */}
+        <section className="p-4 bg-white rounded-xl border">
+          <div className="flex flex-col md:flex-row md:items-center md:gap-4">
+            <div className="text-base text-gray-700 font-semibold">
+              Comercial: <b>{selectedComercial}</b>
+            </div>
+            <div className="text-base text-gray-700 font-semibold">
+              Año (Sheet): <b>{settingsYear}</b>
+            </div>
+          </div>
 
-  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <StatCard label="Cumplimiento (compañía)">
-      {Math.round(kpi.total.pct)}% ({fmtCOP(kpi.total.wonCOP)} / {fmtCOP(kpi.total.goal)})
-    </StatCard>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Cumplimiento (compañía)">
+              {Math.round(kpi.total.pct)}% ({fmtCOP(kpi.total.wonCOP)} / {fmtCOP(kpi.total.goal)})
+            </StatCard>
 
-    <StatCard label="Cerrado del seleccionado">
-      {selectedComercial === "ALL"
-        ? "—"
-        : `${fmtCOP(selectedAtt?.wonCOP ?? 0)} / ${fmtCOP(selectedAtt?.goal ?? 0)}`}
-    </StatCard>
+            <StatCard label="Cerrado del seleccionado">
+              {selectedComercial === "ALL"
+                ? "—"
+                : `${fmtCOP(selectedAtt?.wonCOP ?? 0)} / ${fmtCOP(selectedAtt?.goal ?? 0)}`}
+            </StatCard>
 
-    <StatCard label="Cumplimiento (seleccionado)">
-      {selectedComercial === "ALL" ? "—" : `${Math.round(selectedAtt?.pct ?? 0)}%`}
-    </StatCard>
-  </div>
-</section>
-        
-        {/* Ranking por comercial */}
+            <StatCard label="Cumplimiento (seleccionado)">
+              {selectedComercial === "ALL" ? "—" : `${Math.round(selectedAtt?.pct ?? 0)}%`}
+            </StatCard>
+          </div>
+        </section>
+
+        {/* Ranking por comercial (barra gruesa + % con “semaforo”) */}
         <section className="p-4 bg-white rounded-xl border">
           <div className="mb-3 font-semibold">Ranking por comercial (cumplimiento vs meta anual del Sheet)</div>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-3">
             {onlySelected(kpi.porComercial, selectedComercial).map((row, i) => {
               const pct = Math.round(row.pct);
-              const pctBar = Math.min(100, pct);
               const st = offerStatus(row.wonCOP, row.goal);
               return (
-                <div key={row.comercial} className="text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{i + 1}. {row.comercial}</div>
-                    <div className="flex items-center gap-2">
-                      <span className="tabular-nums text-gray-900">
-                        {pct}% ({fmtCOP(row.wonCOP)} / {fmtCOP(row.goal)})
-                      </span>
-                      <span className={`inline-block w-2 h-2 rounded-full ${st.dot}`} />
+                <div
+                  key={row.comercial}
+                  className="rounded-xl border border-gray-200 shadow-sm bg-gray-50 hover:bg-gray-100 transition-all"
+                >
+                  <div className="p-4 flex flex-col gap-2">
+                    {/* Encabezado alineado como Forecast */}
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-gray-900 text-base">
+                        {i + 1}. {row.comercial}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700">
+                        <span className="tabular-nums">{pct}%</span>
+                        <span className={`inline-block rounded-full ${st.dot} w-4 h-4 md:w-5 md:h-5 ring-2 ring-white ring-offset-1 ring-offset-gray-200`} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded mt-1">
-                    <div className="h-2 rounded bg-gray-700" style={{ width: pctBar + "%" }} />
+
+                    {/* Barra ancha tipo Forecast */}
+                    <div className="mt-1">
+                      <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
+                        <span>{fmtCOP(row.wonCOP)}</span>
+                        <span>{fmtCOP(row.goal)}</span>
+                      </div>
+                      <div className="w-full bg-gray-200/70 rounded-full h-4 md:h-5 overflow-hidden shadow-inner">
+                        <div
+                          className="h-full bg-blue-600 rounded-full transition-all duration-700 ease-out"
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
