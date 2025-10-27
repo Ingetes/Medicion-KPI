@@ -2026,7 +2026,7 @@ const ScreenPipeline = () => {
           })()}
 
           <div className="text-xs text-gray-500 mt-3">
-            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>WR individual</em>.
+            Fórmula: <em>necesidad de cotización</em> = <em>(meta anual − cerrado)</em> ÷ <em>Tasa de éxito individual</em>.
           </div>
         </section>
 
@@ -2064,7 +2064,7 @@ const ScreenPipeline = () => {
                           {i + 1}. {row.comercial}
                         </div>
                         <span className="px-2 py-0.5 rounded-full bg-gray-100 border text-gray-700 text-xs">
-                          WR {row.winRatePct}%
+                          Tasa de éxito {row.winRatePct}%
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-700">
