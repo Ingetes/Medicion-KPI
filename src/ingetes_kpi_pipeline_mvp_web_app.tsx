@@ -311,6 +311,7 @@ const FIXED_COMERCIALES = [
   "KAREN CARRILLO",
   "LIZETH MARTINEZ",
   "PABLO RODRIGUEZ RODRIGUEZ",
+  "LINA SANDOVAL GARAVITO",
 ];
 
 const comercialMap: Record<string, string> = {
@@ -346,6 +347,10 @@ const comercialMap: Record<string, string> = {
   // Pablo
   "pablo rodriguez rodriguez": "PABLO RODRIGUEZ RODRIGUEZ",
   "pablo cesar rodriguez": "PABLO RODRIGUEZ RODRIGUEZ",
+
+  // Lina
+  "lina sandoval garavito": "LINA SANDOVAL GARAVITO",
+  "lina maria sandoval garavito": "LINA SANDOVAL GARAVITO",
 };
 
 const mapComercial = (raw: any) => {
